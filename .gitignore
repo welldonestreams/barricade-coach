@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+study/*-analysis.json
+.review/
+study/*.html
+study/profiles/
+study/archive/

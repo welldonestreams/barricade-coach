@@ -30,6 +30,8 @@
   .big.wait { background:#23262e; color:var(--dim); font-size:16px; font-weight:500; cursor:default; }
   button { background:#2a2e38; color:var(--text); border:1px solid #3a3f4c; border-radius:8px; padding:9px 12px; font-size:14px; cursor:pointer; }
   button:hover { background:#343947; }
+  select { background:#2a2e38; color:var(--text); border:1px solid #3a3f4c; border-radius:6px; padding:6px; }
+  button:disabled { cursor:default; }
   .top3 { display:flex; gap:6px; flex-wrap:wrap; min-height:38px; }
   .top3 button { flex:1; min-width:70px; }
   .row { display:flex; gap:8px; align-items:center; }
@@ -44,18 +46,23 @@
 <header>
   <h1>Barricade Coach</h1>
   <span style="font-size:13px;color:var(--dim)">I play:</span>
-  <span id="mePill" class="pill"></span>
+  <button id="mePill" class="pill" aria-label="Switch your color"></button>
   <button id="undo" style="margin-left:auto">↶ undo</button>
   <button id="reset">reset</button>
 </header>
 <main>
   <div class="boardwrap"><div id="board" class="board"></div></div>
   <div class="panel">
-    <div id="big" class="big wait">…</div>
+    <button id="big" class="big wait" aria-live="polite" disabled>…</button>
     <div class="top3" id="top3"></div>
-    <div class="row"><input id="oppMove" type="text" placeholder="opponent move, e.g. hd5 → Enter" autocomplete="off"></div>
+    <div class="row"><input aria-label="Actual move" id="oppMove" type="text" placeholder="Enter actual move, e.g. e2 or hd5" autocomplete="off"></div>
+    <div class="row"><input id="historyInput" type="text" aria-label="Full move history" placeholder="Paste full history: e2,e8,e3,e7"><button id="loadHistory">Load</button></div>
+    <div class="row"><label for="searchMode">Thinking time</label><select id="searchMode"><option value="2,5">Quick · up to 5 seconds</option><option value="4,15">Study · up to 15 seconds</option></select></div>
+    <div class="row"><label for="engine">Coach engine</label><select id="engine"><option value="python">Tactical search</option><option value="mcts">Monte Carlo · experimental</option></select></div>
+    <div class="meta" id="error" role="alert"></div>
     <div class="sp" id="sp"></div>
     <div class="meta" id="stateLine"></div>
+    <div class="meta" id="masters"></div>
     <div class="hist" id="histBox"></div>
   </div>
 </main>
@@ -93,11 +100,13 @@ function renderBoard(st){
   }
   for(let r=1;r<=9;r++){ const t=document.createElement('div'); t.className='rl'; t.textContent=r;
     t.style.left='0.4%'; t.style.top=((9.3-r)*100/9)+'%'; b.appendChild(t); }
+  for(let f=0;f<9;f++){ const t=document.createElement('div'); t.className='rl'; t.textContent='abcdefghi'[f];
+    t.style.left=((f+.45)*100/9)+'%'; t.style.bottom='0'; b.appendChild(t); }
   for(const w of st.walls){
     const typ=w[0], X=w.charCodeAt(1)-97, Y=parseInt(w.slice(2),10), el=document.createElement('div');
     el.className='wall';
-    if(typ==='h'){ el.style.left=(X*100/9)+'%'; el.style.top=((9-Y)*100/9 - 2)+'%'; el.style.width=(2*100/9)+'%'; el.style.height='4px'; }
-    else { el.style.left=((X+1)*100/9 - 2)+'%'; el.style.top=((8-Y)*100/9)+'%'; el.style.width='4px'; el.style.height=(2*100/9)+'%'; }
+    if(typ==='h'){ el.style.left=(X*100/9)+'%'; el.style.top='calc(' + ((9-Y)*100/9) + '% - 2px)'; el.style.width=(2*100/9)+'%'; el.style.height='4px'; }
+    else { el.style.left='calc(' + ((X+1)*100/9) + '% - 2px)'; el.style.top=((8-Y)*100/9)+'%'; el.style.width='4px'; el.style.height=(2*100/9)+'%'; }
     b.appendChild(el);
   }
   for(const col of ['red','blue']){
@@ -107,56 +116,111 @@ function renderBoard(st){
   }
 }
 
-// ---- engine refresh (single-flight) ----
-async function refresh(){
-  const t = ++token;
-  const myTurn = toMove() === me;
-  if(myTurn){ $('big').className='big wait'; $('big').textContent='thinking…'; $('top3').innerHTML=''; }
-  try{
-    const r = await fetch('/api/move?h=' + encodeURIComponent(hist.join(',')) + '&side=' + toMove());
-    const d = await r.json();
-    if(t !== token) return;                 // stale
-    $('stateLine').textContent = 'Moves: ' + hist.length + (hist.length ? '' : ' · you open') ;
-    $('sp').innerHTML = '<span class="rv">red SP: ' + ((d.sp && d.sp.red) ?? '—') + '</span><span class="bv">blue SP: ' + ((d.sp && d.sp.blue) ?? '—') + '</span>' +
-      '<span>walls: ' + (d.walls || []).length + '/20</span>';
-    if(!d.top || !d.top.length){ $('big').className='big wait'; $('big').textContent='no legal moves'; return; }
-    const best = d.top[0][1];
-    if(myTurn){
-      $('big').className = 'big ' + me;
-      $('big').textContent = 'Play: ' + best;
-      $('big').onclick = () => pushMove(best);
-      $('top3').innerHTML='';
-      d.top.slice(0,4).forEach(t2 => {
-        const b=document.createElement('button');
-        b.textContent = t2[1] + (t2[0]<=0?' ✓':'');
-        b.onclick = () => pushMove(t2[1]);
-        $('top3').appendChild(b);
-      });
-    } else {
-      $('big').className='big wait'; $('big').textContent='opponent to move — type his move below';
-      $('big').onclick=null; $('top3').innerHTML='';
-    }
-  }catch(e){ if(t===token){ $('big').className='big wait'; $('big').textContent='ERR '+e; } }
+// The server validates a candidate history before it becomes the displayed state.
+let validating = false;
+let winner = null;
+let retryTimer;
+function clearAdvice(message){
+  $('big').onclick=null; $('big').disabled=true; $('big').className='big wait';
+  $('big').textContent=message; $('top3').replaceChildren();
 }
-
-// ---- actions ----
-function pushMove(m){
-  if(!m) return;
-  hist.push(m.toLowerCase());
+function save(){
+  try { localStorage.setItem('barricade-coach',JSON.stringify({hist,me})); } catch {}
+}
+function showState(d){
   renderBoard(boardState(hist));
-  $('histBox').textContent = hist.join(', ');
-  refresh();
+  $('histBox').textContent=hist.join(', ');
+  $('sp').textContent='Paths: red '+d.sp.red+' · blue '+d.sp.blue+
+    ' | Walls left: red '+d.remaining.red+' · blue '+d.remaining.blue;
+  winner=d.winner;
+  $('stateLine').textContent='Moves: '+hist.length+' · '+(winner?winner+' won':d.to_move+' to move');
+  const reference=d.opening_reference;
+  $('masters').textContent=reference && reference.moves.length ? 'Study players chose: '+
+    reference.moves.map(r=>r.move+' ('+r.games+' games)').join(', ')+' · observed examples, not best-move proof' : '';
 }
-function setMe(c){ me=c; $('mePill').textContent = me.toUpperCase(); $('mePill').className='pill active '+me; refresh(); }
-
-$('mePill').onclick = () => setMe(me==='red'?'blue':'red');
-setMe('blue');
-$('oppMove').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=$('oppMove').value.trim(); if(v){ $('oppMove').value=''; pushMove(v); } }});
-$('undo').onclick = ()=>{ if(hist.length){ hist.pop(); renderBoard(boardState(hist)); $('histBox').textContent=hist.join(', '); refresh(); }};
-$('reset').onclick = ()=>{ hist=[]; token++; renderBoard(boardState(hist)); $('histBox').textContent=''; $('top3').innerHTML=''; $('sp').innerHTML=''; $('big').className='big wait'; $('big').textContent='…'; refresh(); };
-renderBoard(boardState(hist));
-$('histBox').textContent='';
-refresh();
+async function request(path,h,extra=''){
+  const r=await fetch(path+'?h='+encodeURIComponent(h.join(','))+extra);
+  const d=await r.json();
+  if(!r.ok) { const e=new Error(d.error || 'Request failed'); e.status=r.status; throw e; }
+  return d;
+}
+async function refresh(){
+  clearTimeout(retryTimer);
+  const t=++token, snapshot=hist.slice(), mine=toMove()===me;
+  clearAdvice(winner ? winner.toUpperCase()+' wins' : mine ? 'thinking…' : 'opponent to move — enter their move');
+  if(winner) return;
+  const [depth,seconds]=$('searchMode').value.split(',');
+  const engine=$('engine').value;
+  try {
+    const d=await request(mine?'/api/move':'/api/state',snapshot,
+      mine?'&depth='+depth+'&seconds='+seconds+'&engine='+engine:'');
+    if(t!==token) return;
+    showState(d);
+    $('stateLine').textContent='Moves: '+hist.length+' · '+d.to_move+' to move';
+    if(d.winner) { clearAdvice(d.winner.toUpperCase()+' wins'); return; }
+    if(!mine) return;
+    const info=d.search;
+    if(info.engine!==engine) throw new Error('Server version mismatch. Restart the coach on an unused port.');
+    $('stateLine').textContent+=(info.engine==='mcts'?' · '+info.simulations+' simulations':' · depth '+info.depth)+' · '+info.elapsed.toFixed(2)+'s'+
+      (info.timed_out?' · time limit reached':'')+' · heuristic advice';
+    if(!d.top.length) { clearAdvice('No recommendation'); return; }
+    const best=d.top[0][1];
+    $('big').className='big '+me;
+    $('big').disabled=false;
+    $('big').textContent=(info.depth===0 || info.fallback?'Fallback: ':'Play: ')+best;
+    $('big').onclick=()=>pushMove(best);
+    d.top.slice(0,4).forEach(([score,move])=>{
+      const b=document.createElement('button');
+      b.textContent=move+(info.tactical?' · wins':info.engine==='mcts'?' · '+(-score)+' visits':' ('+score+')');
+      b.onclick=()=>pushMove(move); $('top3').appendChild(b);
+    });
+    if(info.principal_variation.length) $('stateLine').textContent+=' · line: '+info.principal_variation.join(' → ');
+  } catch(e) {
+    if(t!==token) return;
+    clearAdvice(e.message);
+    if(e.status===429) retryTimer=setTimeout(refresh,500);
+  }
+}
+async function acceptHistory(candidate){
+  if(validating) return false;
+  validating=true;
+  clearTimeout(retryTimer);
+  const t=++token;
+  clearAdvice('checking move…'); $('error').textContent='';
+  try {
+    const d=await request('/api/state',candidate);
+    if(t!==token) return false;
+    hist=d.history; showState(d); save(); refresh(); return true;
+  } catch(e) {
+    if(t===token){ $('error').textContent=e.message; refresh(); }
+    return false;
+  } finally { validating=false; }
+}
+async function pushMove(m){
+  if(!m || winner) return;
+  if(await acceptHistory([...hist,m.trim().toLowerCase()])) $('oppMove').value='';
+}
+function setMe(c){
+  me=c; $('mePill').textContent=me.toUpperCase();
+  $('mePill').className='pill active '+me; save(); refresh();
+}
+$('mePill').onclick=()=>{ if(!validating) setMe(me==='red'?'blue':'red'); };
+$('oppMove').addEventListener('keydown',e=>{ if(e.key==='Enter') pushMove(e.target.value); });
+$('undo').onclick=()=>{ if(hist.length) acceptHistory(hist.slice(0,-1)); };
+$('reset').onclick=()=>acceptHistory([]);
+$('loadHistory').onclick=()=>acceptHistory($('historyInput').value.trim() ? $('historyInput').value.split(',') : []);
+$('searchMode').onchange=()=>{ if(!validating) refresh(); };
+$('engine').onchange=()=>{ if(!validating) refresh(); };
+async function init(){
+  let saved;
+  try { saved=JSON.parse(localStorage.getItem('barricade-coach')); } catch {}
+  if(saved && ['red','blue'].includes(saved.me)) me=saved.me;
+  $('mePill').textContent=me.toUpperCase(); $('mePill').className='pill active '+me;
+  renderBoard(boardState([]));
+  if(saved && Array.isArray(saved.hist)) await acceptHistory(saved.hist);
+  else refresh();
+}
+init();
 </script>
 </body>
 </html>

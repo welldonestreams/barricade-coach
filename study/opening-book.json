@@ -1,0 +1,537 @@
+{
+  "source_games": 370,
+  "max_ply": 12,
+  "min_samples": 3,
+  "positions": {
+    "": [
+      {
+        "move": "e2",
+        "games": 187,
+        "wins": 158
+      }
+    ],
+    "e2": [
+      {
+        "move": "e8",
+        "games": 174,
+        "wins": 123
+      }
+    ],
+    "e2,e8": [
+      {
+        "move": "e3",
+        "games": 178,
+        "wins": 151
+      }
+    ],
+    "e2,e8,e3": [
+      {
+        "move": "e7",
+        "games": 157,
+        "wins": 114
+      }
+    ],
+    "e2,e8,e3,e7": [
+      {
+        "move": "e4",
+        "games": 159,
+        "wins": 138
+      }
+    ],
+    "e2,e8,e3,e7,e4": [
+      {
+        "move": "e6",
+        "games": 121,
+        "wins": 93
+      },
+      {
+        "move": "ha6",
+        "games": 6,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6": [
+      {
+        "move": "hh3",
+        "games": 88,
+        "wins": 75
+      },
+      {
+        "move": "he3",
+        "games": 23,
+        "wins": 19
+      },
+      {
+        "move": "hd3",
+        "games": 12,
+        "wins": 12
+      },
+      {
+        "move": "e5",
+        "games": 6,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3": [
+      {
+        "move": "hc6",
+        "games": 25,
+        "wins": 19
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6": [
+      {
+        "move": "vd5",
+        "games": 6,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6,vd5": [
+      {
+        "move": "e5",
+        "games": 11,
+        "wins": 9
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3": [
+      {
+        "move": "hf6",
+        "games": 31,
+        "wins": 23
+      },
+      {
+        "move": "hc7",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3,hf6": [
+      {
+        "move": "ve5",
+        "games": 13,
+        "wins": 10
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3,hf6,ve5": [
+      {
+        "move": "e5",
+        "games": 20,
+        "wins": 12
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3,hf6,ve5,e5": [
+      {
+        "move": "hc3",
+        "games": 8,
+        "wins": 6
+      },
+      {
+        "move": "e6",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3,hf6,ve5,e5,hc3": [
+      {
+        "move": "f4",
+        "games": 14,
+        "wins": 9
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6,vd5,e5": [
+      {
+        "move": "hf3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hd7": [
+      {
+        "move": "hf3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hd7,hf3,hf7": [
+      {
+        "move": "hh3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hc6": [
+      {
+        "move": "vd5",
+        "games": 14,
+        "wins": 12
+      },
+      {
+        "move": "va6",
+        "games": 6,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hf6": [
+      {
+        "move": "hf3",
+        "games": 4,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3": [
+      {
+        "move": "hf6",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,e5": [
+      {
+        "move": "e6",
+        "games": 9,
+        "wins": 7
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,e5,e6,hd6": [
+      {
+        "move": "hf3",
+        "games": 5,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hf7": [
+      {
+        "move": "e5",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hf7,e5,hd7": [
+      {
+        "move": "hd4",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,hf2": [
+      {
+        "move": "e6",
+        "games": 5,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,ha6": [
+      {
+        "move": "e5",
+        "games": 7,
+        "wins": 7
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,ha6,e5,e4": [
+      {
+        "move": "hd3",
+        "games": 6,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,he7": [
+      {
+        "move": "e5",
+        "games": 5,
+        "wins": 5
+      }
+    ],
+    "e2,e8,e3,e7,e4,he7,e5,hc7": [
+      {
+        "move": "he4",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,e5,e6,e4": [
+      {
+        "move": "hd3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,hd3": [
+      {
+        "move": "f3",
+        "games": 6,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,hd3,f3,hf3": [
+      {
+        "move": "e3",
+        "games": 5,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,he3,hf6,ve5,e5,e6": [
+      {
+        "move": "hd6",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hc6,vd5,ha6": [
+      {
+        "move": "f4",
+        "games": 6,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,ve4": [
+      {
+        "move": "e5",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hh7": [
+      {
+        "move": "e5",
+        "games": 3,
+        "wins": 1
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5,e4": [
+      {
+        "move": "he3",
+        "games": 5,
+        "wins": 5
+      }
+    ],
+    "e2,e8,e3,e7,e4,ha6,e5": [
+      {
+        "move": "hd5",
+        "games": 3,
+        "wins": 0
+      }
+    ],
+    "e2,e8,hc2": [
+      {
+        "move": "e7",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6,hf3": [
+      {
+        "move": "ve4",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,he3": [
+      {
+        "move": "d3",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,he3,d3,hc3": [
+      {
+        "move": "e3",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,he3,d3,hc3,e3,e7": [
+      {
+        "move": "f3",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,he3,d3,hc3,e3,e7,f3,vf2": [
+      {
+        "move": "f2",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,he6": [
+      {
+        "move": "d7",
+        "games": 5,
+        "wins": 5
+      }
+    ],
+    "e2,e8,e3,e7,he6,d7,hc6": [
+      {
+        "move": "e7",
+        "games": 4,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,ha3": [
+      {
+        "move": "hc6",
+        "games": 8,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,ha3,hc6,hc3": [
+      {
+        "move": "hf3",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,hd2": [
+      {
+        "move": "e6",
+        "games": 5,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,hd2,e6,hf2": [
+      {
+        "move": "e5",
+        "games": 3,
+        "wins": 1
+      }
+    ],
+    "e2,d9": [
+      {
+        "move": "e3",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,d9,e3,hd3": [
+      {
+        "move": "f3",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hc6,vd5,ve4": [
+      {
+        "move": "hf5",
+        "games": 6,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,hc2": [
+      {
+        "move": "e6",
+        "games": 3,
+        "wins": 1
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,vf3": [
+      {
+        "move": "he3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hd6": [
+      {
+        "move": "hf3",
+        "games": 7,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,hd7": [
+      {
+        "move": "e5",
+        "games": 5,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hf3": [
+      {
+        "move": "hc6",
+        "games": 5,
+        "wins": 4
+      },
+      {
+        "move": "ve4",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hf3,hc6,hh3": [
+      {
+        "move": "ve4",
+        "games": 4,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5": [
+      {
+        "move": "e4",
+        "games": 11,
+        "wins": 10
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5,e4,e6": [
+      {
+        "move": "e3",
+        "games": 5,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5,e4,e6,e3,he2": [
+      {
+        "move": "he3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hh3,he6": [
+      {
+        "move": "hf3",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,hf7": [
+      {
+        "move": "e5",
+        "games": 3,
+        "wins": 2
+      }
+    ],
+    "e2,e8,e3,e7,e4,hd7": [
+      {
+        "move": "e5",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6,vd5,e5,hf3": [
+      {
+        "move": "d4",
+        "games": 8,
+        "wins": 6
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5,e4,hd3": [
+      {
+        "move": "hd5",
+        "games": 4,
+        "wins": 4
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,e5,e4,he3,he5": [
+      {
+        "move": "hh1",
+        "games": 3,
+        "wins": 3
+      }
+    ],
+    "e2,e8,e3,e7,e4,e6,hd3,hc6,vd5,e5,e6": [
+      {
+        "move": "he6",
+        "games": 3,
+        "wins": 3
+      }
+    ]
+  }
+}
