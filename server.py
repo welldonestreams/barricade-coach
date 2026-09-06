@@ -58,51 +58,60 @@ def json_or(text):
         return None
 
 
-# On-demand opponent collection: download one player's games, build their model.
-# Deliberately does NOT write study/collection-summary.json (the harvest owns that
-# file) and uses the same jittered pacing as collect_games so it stays gentle.
-import collect_games  # noqa: E402  (imports coach already)
+# On-demand opponent collection: build a player's model from games already in the
+# archive (the harvest owns bulk download), with a small capped fresh-download
+# fallback for brand-new opponents. Never writes collection-summary.json.
 
-def fetch_opponent_model(name):
-    """Collect `name`'s public games and build their learning model. Returns the
-    model dict, or None if the player has no games / errors out."""
-    profiles_dir = os.path.join(ROOT, 'study', 'profiles')
+def fetch_opponent_model(name, max_fresh=40):
+    """Build `name`'s tendency model. Sources, in order:
+      1. games already in study/archive/ that feature this player (fast, local)
+      2. if none, download up to max_fresh of their recent games (jittered)
+    Returns the model dict, or None if no games are available."""
+    import collect_games
     archive_dir = os.path.join(ROOT, 'study', 'archive')
-    os.makedirs(profiles_dir, exist_ok=True)
     os.makedirs(archive_dir, exist_ok=True)
-    profile = os.path.join(profiles_dir, f'{name}.json')
-    if not os.path.exists(profile):
-        collect_games.collect([name])
-    try:
-        with open(profile, encoding='utf-8') as f:
-            games = json.load(f)
-    except (ValueError, OSError):
-        return None
-    if not games:
-        return None
+
     records = []
-    for g in games:
-        code = g.get('shareCode')
-        if not code:
+    for fn in os.listdir(archive_dir):
+        if not fn.endswith('.json'):
             continue
-        path = os.path.join(archive_dir, f'{code}.json')
-        data = None
-        if os.path.exists(path):
-            try:
-                data = json.loads(open(path, encoding='utf-8').read())
-            except (ValueError, OSError):
-                pass
-        if data is None:
-            try:
-                data = collect_games.get('/games/' + code)
-                tmp = path + '.tmp'
-                with open(tmp, 'w', encoding='utf-8') as f:
-                    json.dump(data, f)
-                os.replace(tmp, path)
-                time.sleep(random.uniform(1.5, 3.0))
-            except Exception:
-                continue
-        records.append(data)
+        path = os.path.join(archive_dir, fn)
+        try:
+            with open(path, encoding='utf-8') as f:
+                d = json.load(f)
+        except (ValueError, OSError):
+            continue
+        if d.get('player1Username') == name or d.get('player2Username') == name:
+            records.append(d)
+
+    if not records and max_fresh > 0:
+        # Brand-new opponent: download a bounded batch of recent games.
+        try:
+            data = collect_games.get(f'/api/users/{name}/games?page=1&limit=100')
+            for g in (data.get('games') or [])[:max_fresh]:
+                code = g.get('shareCode')
+                if not code:
+                    continue
+                path = os.path.join(archive_dir, f'{code}.json')
+                if os.path.exists(path):
+                    try:
+                        records.append(json.load(open(path, encoding='utf-8')))
+                    except (ValueError, OSError):
+                        pass
+                    continue
+                try:
+                    d = collect_games.get('/games/' + code)
+                    tmp = path + '.tmp'
+                    with open(tmp, 'w', encoding='utf-8') as f:
+                        json.dump(d, f)
+                    os.replace(tmp, path)
+                    records.append(d)
+                    time.sleep(random.uniform(1.5, 3.0))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
     if not records:
         return None
     model = learning.build_opponent_model(name, records)
