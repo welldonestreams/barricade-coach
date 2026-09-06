@@ -329,6 +329,34 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(400, {'error': str(e)})
             return
+        if u.path == '/api/analyze':
+            # Post-game review: grade every ply of `side` and return the top
+            # blunders (moves that scored worse than the coach's best).
+            q = parse_qs(u.query)
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                side_s = q.get('side', ['red'])[0].lower()
+                if side_s not in ('red', 'blue'):
+                    raise ValueError('side must be red or blue')
+                side = {'red': c.RED, 'blue': c.BLUE}[side_s]
+                depth = int(q.get('depth', ['2'])[0])
+                seconds = float(q.get('seconds', ['1.0'])[0])
+                if not 1 <= depth <= 4 or not 0 < seconds <= 10:
+                    raise ValueError('depth 1-4, seconds >0 and at most 10')
+                if not SEARCH_LOCK.acquire(blocking=False):
+                    self._send(429, {'error': 'Coach is busy; try again shortly'})
+                    return
+                try:
+                    rows = c.grade_game(hist, side, depth=depth, time_limit=seconds)
+                finally:
+                    SEARCH_LOCK.release()
+                blunders = [r for r in rows if r.get('delta') is not None and r['delta'] > 0]
+                blunders.sort(key=lambda r: -r['delta'])
+                self._send(200, {'side': side_s, 'plies_graded': len(rows),
+                                 'blunders': blunders[:3], 'all': rows})
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e)})
+            return
         if u.path == '/' or u.path == '/index.html':
             with open(UI, 'rb') as f:
                 self._send(200, f.read(), 'text/html')
