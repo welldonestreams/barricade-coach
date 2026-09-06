@@ -136,7 +136,7 @@ function showState(d){
   $('stateLine').textContent='Moves: '+hist.length+' · '+(winner?winner+' won':d.to_move+' to move');
   const reference=d.opening_reference;
   $('masters').textContent=reference && reference.moves.length ? 'Study players chose: '+
-    reference.moves.map(r=>r.move+' ('+r.games+' games)').join(', ')+' · observed examples, not best-move proof' : '';
+    reference.moves.map(r=>r.move+' ('+r.games+' games)').join(', ')+' · from '+reference.source_games+' downloaded study games; not best-move proof' : '';
 }
 async function request(path,h,extra=''){
   const r=await fetch(path+'?h='+encodeURIComponent(h.join(','))+extra);

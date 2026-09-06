@@ -95,7 +95,8 @@ games, counting a move only when one of the three study players played it.
 It requires three examples, covers only the first twelve plies, and shows sample
 counts in the UI. The book records human choices, not optimal moves or a trained
 neural network. It never overrides search. Its `source_games` field gives the
-actual corpus coverage used in that build. Rebuild it after more games download.
+actual corpus coverage used in that build. The collector rebuilds it automatically
+after downloading; `python build_book.py` can refresh a partial snapshot sooner.
 
 The five supplied high-Elo examples include a MikeJordan resignation loss in
 5sx6pm. There is no justification for blindly copying all moves from that set.

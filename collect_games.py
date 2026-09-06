@@ -110,3 +110,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('usernames', nargs='+')
     collect(parser.parse_args().usernames)
+    from build_book import build
+    build()

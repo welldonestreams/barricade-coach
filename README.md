@@ -92,6 +92,7 @@ rate limits, and resumes downloaded files. Full profile lists and raw archives
 stay out of Git; local collection summaries describe coverage and failures.
 Cached profile indexes are reused on subsequent runs (they are snapshots, not a
 live subscription). Rename the relevant cached profile file to request a fresh index.
+When collection finishes, the opening reference is rebuilt automatically.
 It only supports the 9x9 rules implemented here; unsupported games are reported.
 
 Official per-move analysis is separate: on 2026-09-06 the shared game GET worked,
