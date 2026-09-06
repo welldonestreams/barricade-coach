@@ -125,6 +125,84 @@ def outcome_stats(history):
 
 
 # --------------------------------------------------------------------------
+# Eval-delta ("why") memory: position -> move -> avg eval swing + outcome
+# --------------------------------------------------------------------------
+
+EVALS = MEMORY / 'eval-deltas.json'
+
+
+def _empty_evals():
+    return {'version': 1, 'positions': {}, 'games': 0, 'updated': None}
+
+
+def load_evals():
+    _ensure()
+    if EVALS.exists():
+        try:
+            return json.loads(EVALS.read_text(encoding='utf-8'))
+        except (ValueError, OSError):
+            pass
+    return _empty_evals()
+
+
+def save_evals(data):
+    _ensure()
+    data['updated'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    tmp = EVALS.with_suffix('.tmp')
+    tmp.write_text(json.dumps(data), encoding='utf-8')
+    tmp.replace(EVALS)
+
+
+def record_evals(history_csv, winner):
+    """Replay a finished game and record the causal 'why' per move.
+
+    For each ply, store how much the move swung the mover's evaluation
+    (delta = eval_before - eval_after; eval is lower-is-better, so positive
+    delta means the move helped the mover, negative means it hurt), tagged by
+    whether that mover went on to win. Aggregated, this separates moves that
+    actually win games from moves that merely look common.
+    """
+    game = coach.Game(coach.parse_history(history_csv))
+    winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
+    if winner not in (None, 'red', 'blue'):
+        raise ValueError('winner must be red, blue or null')
+    data = load_evals()
+    g = coach.Game()
+    for mv in game.history:
+        pos = ','.join(g.history)
+        mover = g.to_move
+        before = g.eval_side(mover)
+        g.apply(mv)
+        after = g.eval_side(mover)
+        delta = before - after
+        cell = data['positions'].setdefault(pos, {}).setdefault(
+            mv, {'games': 0, 'sum_delta': 0.0, 'won': 0, 'lost': 0})
+        cell['games'] += 1
+        cell['sum_delta'] += delta
+        if mover == winner_side:
+            cell['won'] += 1
+        else:
+            cell['lost'] += 1
+    data['games'] += 1
+    save_evals(data)
+    return True
+
+
+def eval_delta_stats(history):
+    """For the current position, return {move: {games, avg_delta, won, lost}} —
+    the learned 'why': how much each move has historically swung the game, and
+    how often it led to a win for the mover."""
+    pos = ','.join(history)
+    data = load_evals()
+    raw = data['positions'].get(pos, {})
+    out = {}
+    for mv, cell in raw.items():
+        out[mv] = {'games': cell['games'], 'avg_delta': cell['sum_delta'] / cell['games'],
+                   'won': cell['won'], 'lost': cell['lost']}
+    return out
+
+
+# --------------------------------------------------------------------------
 # Opponent tendency models
 # --------------------------------------------------------------------------
 

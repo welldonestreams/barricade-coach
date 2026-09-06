@@ -5,6 +5,7 @@ No credentials or official analysis requests. Archives stay out of Git by defaul
 """
 import argparse
 import json
+import random
 from pathlib import Path
 import time
 from urllib.parse import quote
@@ -81,7 +82,9 @@ def collect(usernames):
                 temporary = path.with_suffix('.tmp')
                 temporary.write_text(json.dumps(data, indent=2), encoding='utf-8')
                 temporary.replace(path)
-                time.sleep(1.1)
+                # Jittered pacing: a fixed interval is a robot fingerprint; a
+                # human-ish spread plus the 429 backoff keeps us under the radar.
+                time.sleep(random.uniform(1.5, 3.0))
             if data['boardSize'] != 9:
                 raise ValueError(f'Unsupported board size {data["boardSize"]}')
             game = coach.Game(data['historyCsv'])

@@ -74,8 +74,11 @@ def main():
         hist, winner = play_one_game(args.depth, args.seconds, args.engine, args.random_plies)
         winner_name = {0: 'red', 1: 'blue', None: None}[winner]
         try:
-            learning.record_game(','.join(hist), winner_name, red_name=args.red, blue_name=args.blue,
-                                 source='selfplay')
+            recorded = learning.record_game(','.join(hist), winner_name, red_name=args.red,
+                                            blue_name=args.blue, source='selfplay')
+            if recorded:
+                # Causal "why" signal: per-move eval swing tagged by outcome.
+                learning.record_evals(','.join(hist), winner_name)
         except ValueError as exc:
             print(f'game {started + i + 1}: record skipped ({exc})', flush=True)
             continue
