@@ -46,7 +46,10 @@
 <header>
   <h1>Barricade Coach</h1>
   <span style="font-size:13px;color:var(--dim)">I play:</span>
-  <button id="mePill" class="pill" aria-label="Switch your color"></button>
+  <div role="group" aria-label="Your color">
+    <button id="playRed" class="pill red" aria-pressed="false">Red · first</button>
+    <button id="playBlue" class="pill blue" aria-pressed="false">Blue · second</button>
+  </div>
   <button id="undo" style="margin-left:auto">↶ undo</button>
   <button id="reset">reset</button>
 </header>
@@ -201,10 +204,17 @@ async function pushMove(m){
   if(await acceptHistory([...hist,m.trim().toLowerCase()])) $('oppMove').value='';
 }
 function setMe(c){
-  me=c; $('mePill').textContent=me.toUpperCase();
-  $('mePill').className='pill active '+me; save(); refresh();
+  me=c; renderColor(); save(); if(!validating) refresh();
 }
-$('mePill').onclick=()=>{ if(!validating) setMe(me==='red'?'blue':'red'); };
+function renderColor(){
+  for(const color of ['red','blue']){
+    const button=$(color==='red'?'playRed':'playBlue');
+    button.className='pill '+color+(color===me?' active':'');
+    button.setAttribute('aria-pressed',String(color===me));
+  }
+}
+$('playRed').onclick=()=>setMe('red');
+$('playBlue').onclick=()=>setMe('blue');
 $('oppMove').addEventListener('keydown',e=>{ if(e.key==='Enter') pushMove(e.target.value); });
 $('undo').onclick=()=>{ if(hist.length) acceptHistory(hist.slice(0,-1)); };
 $('reset').onclick=()=>acceptHistory([]);
@@ -215,7 +225,7 @@ async function init(){
   let saved;
   try { saved=JSON.parse(localStorage.getItem('barricade-coach')); } catch {}
   if(saved && ['red','blue'].includes(saved.me)) me=saved.me;
-  $('mePill').textContent=me.toUpperCase(); $('mePill').className='pill active '+me;
+  renderColor();
   renderBoard(boardState([]));
   if(saved && Array.isArray(saved.hist)) await acceptHistory(saved.hist);
   else refresh();

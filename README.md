@@ -19,7 +19,10 @@ python coach_server.py
 # stdin: e2,e8|red   -> one JSON response per line
 ```
 
-Choose your color, enter each actual move, or paste the full comma-separated
+Use the visible **Red · first** or **Blue · second** buttons to choose your color
+at any time, including midgame. Switching color keeps the moves and board intact
+and updates whose turn you are waiting for. Your selection survives reloads.
+Enter each actual move, or paste the full comma-separated
 history and click Load. Click a recommendation to record that you played it.
 Illegal entries leave the confirmed board unchanged. Undo corrects an entry;
 Reset starts a game. Confirmed history and your color survive reloads in the

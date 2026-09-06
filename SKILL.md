@@ -36,6 +36,10 @@ Neither engine is a perfect solver or has measured leaderboard Elo.
 
 ## Review and learning
 
+The user identifies the steak accounts as theirs, including alternate accounts.
+Recognize steak-prefixed usernames case-insensitively; do not assume they always
+play the same color. Read each game's player1/player2 fields to assign their side.
+
 Use the supplied public game record, then replay with Game before grading.
 `review_games.py` grades the user's side in their five games and both sides in the
 five high-Elo examples. `grade_game` reports one-based ply numbers and gives equal
