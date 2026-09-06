@@ -71,6 +71,31 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == '/api/health':
             self._send(200, {'service': 'barricade-coach', 'protocol': 2})
             return
+        if u.path == '/api/legal':
+            q = parse_qs(u.query)
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                g = c.Game(hist)
+                walls_left = {'red': g.remaining[c.RED], 'blue': g.remaining[c.BLUE]}
+                if g.winner is not None:
+                    self._send(200, {'to_move': 'red' if g.to_move == c.RED else 'blue',
+                                     'legal_pawn': [], 'legal_walls': [], 'walls_left': walls_left,
+                                     'winner': ('red' if g.winner == c.RED else 'blue')})
+                    return
+                pawn_dests = []
+                for _, p in g.pawn_moves(g.to_move):
+                    pawn_dests.append(c.LETTERS[p[0]] + str(p[1] + 1))
+                self._send(200, {
+                    'to_move': 'red' if g.to_move == c.RED else 'blue',
+                    'pawn_origin': c.LETTERS[g.pawns[g.to_move][0]] + str(g.pawns[g.to_move][1] + 1),
+                    'legal_pawn': sorted(set(pawn_dests)),
+                    'legal_walls': g.legal_walls(),
+                    'walls_left': walls_left,
+                    'winner': None,
+                })
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e), 'legal_history': False})
+            return
         if u.path in ('/api/move', '/api/state'):
             q = parse_qs(u.query)
             try:

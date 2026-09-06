@@ -10,19 +10,30 @@
   body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
   header { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:18px; margin:0; }
-  .pill { border:1px solid var(--line); border-radius:999px; padding:3px 10px; cursor:pointer; user-select:none; font-size:13px; }
+  .pill { border:1px solid var(--line); border-radius:999px; padding:3px 10px; cursor:pointer; user-select:none; font-size:13px; background:transparent; color:var(--text); }
   .pill.active.red { border-color:var(--red); color:var(--red); font-weight:700; }
   .pill.active.blue { border-color:var(--blue); color:var(--blue); font-weight:700; }
+  .tool { border:1px solid var(--line); border-radius:8px; padding:3px 8px; cursor:pointer; user-select:none; font-size:12px; background:transparent; color:var(--text); }
+  .tool.active { border-color:#d9a514; color:#d9a514; font-weight:700; }
+  .tool:disabled { opacity:.35; cursor:default; }
   main { display:flex; gap:20px; padding:16px; flex-wrap:wrap; justify-content:center; }
   .boardwrap { position:relative; width:min(78vw,420px); aspect-ratio:1; align-self:flex-start; }
-  .board { position:absolute; inset:0; background:#d9d2b8; }
-  .cell { position:absolute; border:1px solid rgba(0,0,0,.12); background:#e8e2cd; }
+  .board { position:absolute; inset:0; background:#d9d2b8; cursor:pointer; touch-action:manipulation; }
+  .cell { position:absolute; border:1px solid rgba(0,0,0,.12); background:#e8e2cd; pointer-events:none; }
   .cell.alt { background:#d9d2b8; }
   .cell.goalred { background:#f3c1c3; } .cell.goalblue { background:#c3d5f3; }
-  .pawn { position:absolute; border-radius:50%; width:9%; height:9%; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.5); z-index:3; }
+  .pawn { position:absolute; border-radius:50%; width:9%; height:9%; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.5); z-index:3; pointer-events:none; }
   .pawn.red { background:var(--red); } .pawn.blue { background:var(--blue); }
-  .wall { position:absolute; background:#241f0e; z-index:2; }
-  .rl { position:absolute; font-size:10px; color:#000; opacity:.5; z-index:1; }
+  .pawn.sel { outline:3px solid #fff; outline-offset:1px; }
+  .dot { position:absolute; width:4.2%; height:4.2%; min-width:12px; min-height:12px; border-radius:50%; transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
+  .dot.step { background:rgba(40,160,80,.55); border:2px solid rgba(255,255,255,.7); }
+  .dot.jump { background:rgba(220,140,40,.65); border:2px solid rgba(255,255,255,.7); }
+  .wall { position:absolute; background:#241f0e; z-index:2; pointer-events:none; }
+  .ghost { position:absolute; z-index:5; pointer-events:none; opacity:.85; border-radius:2px; }
+  .ghost.ok { background:#2ecc71; box-shadow:0 0 0 1px rgba(255,255,255,.7); }
+  .ghost.bad { background:#e74c3c; box-shadow:0 0 0 1px rgba(255,255,255,.7); }
+  .hint { position:absolute; left:0; right:0; bottom:-22px; text-align:center; font-size:11px; color:var(--dim); pointer-events:none; }
+  .rl { position:absolute; font-size:10px; color:#000; opacity:.5; z-index:1; pointer-events:none; }
   .panel { width:min(96vw,380px); display:flex; flex-direction:column; gap:10px; }
   .big { font-size:34px; font-weight:800; text-align:center; padding:14px; border-radius:12px; cursor:pointer; }
   .big.red { background:rgba(229,72,77,.16); color:var(--red); }
@@ -37,9 +48,10 @@
   .row { display:flex; gap:8px; align-items:center; }
   input[type=text] { flex:1; background:#14161b; color:var(--text); border:1px solid #3a3f4c; border-radius:8px; padding:9px; font-size:16px; }
   .meta { font-size:12px; color:var(--dim); line-height:1.5; }
-  .hist { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:#14161b; border:1px solid #2a2e38; border-radius:8px; padding:8px; min-height:60px; }
+  .hist { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:#14161b; border:1px solid #2a2e38; border-radius:8px; padding:8px; min-height:60px; word-break:break-all; }
   .sp { display:flex; gap:14px; font-size:13px; }
   .sp .rv { color:var(--red); } .sp .bv { color:var(--blue); }
+  .legend { font-size:11px; color:var(--dim); }
 </style>
 </head>
 <body>
@@ -50,16 +62,25 @@
     <button id="playRed" class="pill red" aria-pressed="false">Red · first</button>
     <button id="playBlue" class="pill blue" aria-pressed="false">Blue · second</button>
   </div>
+  <div role="group" aria-label="Wall tool" style="display:flex;gap:4px;align-items:center">
+    <span style="font-size:12px;color:var(--dim)">wall:</span>
+    <button id="toolH" class="tool" title="Place a horizontal wall by clicking the board">—</button>
+    <button id="toolV" class="tool" title="Place a vertical wall by clicking the board">|</button>
+    <button id="toolOff" class="tool active">off</button>
+  </div>
   <button id="undo" style="margin-left:auto">↶ undo</button>
   <button id="reset">reset</button>
 </header>
 <main>
-  <div class="boardwrap"><div id="board" class="board"></div></div>
+  <div class="boardwrap">
+    <div id="board" class="board"></div>
+    <div class="hint" id="boardHint"></div>
+  </div>
   <div class="panel">
     <button id="big" class="big wait" aria-live="polite" disabled>…</button>
     <div class="top3" id="top3"></div>
-    <div class="row"><input aria-label="Actual move" id="oppMove" type="text" placeholder="Enter actual move, e.g. e2 or hd5" autocomplete="off"></div>
-    <div class="row"><input id="historyInput" type="text" aria-label="Full move history" placeholder="Paste full history: e2,e8,e3,e7"><button id="loadHistory">Load</button></div>
+    <div class="row"><input aria-label="Actual move" id="oppMove" type="text" placeholder="Type a move, e.g. e2 or hd5" autocomplete="off"></div>
+    <div class="row"><input id="historyInput" type="text" aria-label="Full move history" placeholder="Paste history: e2,e8,e3,e7  — or a barricade.gg share: 1.e2e8 2.e3e7 …"><button id="loadHistory">Load</button></div>
     <div class="row"><label for="searchMode">Thinking time</label><select id="searchMode"><option value="2,5">Quick · up to 5 seconds</option><option value="4,15">Study · up to 15 seconds</option></select></div>
     <div class="row"><label for="engine">Coach engine</label><select id="engine"><option value="python">Tactical search</option><option value="mcts">Monte Carlo · experimental</option></select></div>
     <div class="meta" id="error" role="alert"></div>
@@ -67,6 +88,7 @@
     <div class="meta" id="stateLine"></div>
     <div class="meta" id="masters"></div>
     <div class="hist" id="histBox"></div>
+    <div class="legend">Click a pawn to see its moves (green = step, orange = jump), then click the target square. To place a wall, click — or | then click the board where it should go.</div>
   </div>
 </main>
 <script>
@@ -74,6 +96,10 @@ const $ = id => document.getElementById(id);
 let hist = [];
 let me = 'red';
 let token = 0;
+let wallTool = null;          // null | 'h' | 'v'
+let selectedPawn = null;      // square of mover pawn currently selected
+let legal = null;             // last /api/legal response
+const flip = () => me === 'blue';
 
 const toMove = () => hist.length % 2 === 0 ? 'red' : 'blue';
 
@@ -90,36 +116,85 @@ function boardState(h){
   }
   return { walls, pawns };
 }
-function posOf(sq){ const f = sq.charCodeAt(0)-97, r = parseInt(sq.slice(1),10);
-  return { x:(f+.5)*100/9, y:(9.5-r)*100/9 }; }
-function renderBoard(st){
+// screen position of a square center; f=file idx 0..8, rank=1..9
+// Blue view mirrors ranks (rank 9 at bottom, like the blue player's own side);
+// files stay a..i left-to-right so on-screen squares match move notation.
+function centerOf(f, rank){
+  if(flip()) rank = 10-rank;
+  return { x:(f+.5)*100/9, y:(9.5-rank)*100/9 };
+}
+function sqCenter(sq){
+  return centerOf(sq.charCodeAt(0)-97, parseInt(sq.slice(1),10));
+}
+// wall geometry in % of board. Horizontal wall hXY sits on the boundary
+// between ranks Y and Y+1 (screen top = (9-Y)/9) spanning files X..X+1.
+// Vertical wall vXY sits on the boundary between files X and X+1 spanning
+// ranks Y..Y+1 (screen top = (8-Y)/9, height 2 cells).
+// Blue view mirrors the Y axis only: top' = 100 - top - height.
+function wallRect(w){
+  const typ=w[0], X=w.charCodeAt(1)-97, Y=parseInt(w.slice(2),10);
+  const TH=0.9; // wall thickness, %
+  let r;
+  if(typ==='h'){
+    r = { left:X*100/9, top:(9-Y)*100/9, width:2*100/9, height:TH };
+    r.top -= r.height/2;
+  } else {
+    r = { left:(X+1)*100/9, top:(8-Y)*100/9, width:TH, height:2*100/9 };
+    r.left -= r.width/2;
+  }
+  if(flip()) r.top = 100 - r.top - r.height;
+  return r;
+}
+// click px -> {file(0..8), rank(1..9)} in real board coords
+function squareAt(px, py, rect){
+  const fx = px/rect.width*9, fy = py/rect.height*9;
+  let file = Math.min(8, Math.max(0, Math.floor(fx)));
+  let rank = Math.min(9, Math.max(1, 9 - Math.floor(fy)));
+  if(flip()) rank = 10-rank;
+  return { file, rank, sq: 'abcdefghi'[file] + rank };
+}
+function renderBoard(st, sel, dots){
   const b = $('board'); b.innerHTML='';
   for(let r=1;r<=9;r++) for(let f=0;f<9;f++){
     const c=document.createElement('div');
+    const p = centerOf(f,r);
     c.className='cell' + ((f+r)%2?' alt':'') + (r===9?' goalred':r===1?' goalblue':'');
-    c.style.left=(f*100/9)+'%'; c.style.top=((9-r)*100/9)+'%';
+    c.style.left=(p.x-100/18)+'%'; c.style.top=(p.y-100/18)+'%';
     c.style.width=(100/9)+'%'; c.style.height=(100/9)+'%';
     b.appendChild(c);
   }
-  for(let r=1;r<=9;r++){ const t=document.createElement('div'); t.className='rl'; t.textContent=r;
-    t.style.left='0.4%'; t.style.top=((9.3-r)*100/9)+'%'; b.appendChild(t); }
-  for(let f=0;f<9;f++){ const t=document.createElement('div'); t.className='rl'; t.textContent='abcdefghi'[f];
-    t.style.left=((f+.45)*100/9)+'%'; t.style.bottom='0'; b.appendChild(t); }
+  // file labels along the bottom edge of the board, a..i left to right
+  for(let i=0;i<9;i++){
+    const t=document.createElement('div'); t.className='rl'; t.textContent='abcdefghi'[i];
+    t.style.left=((i+0.42)*100/9)+'%'; t.style.bottom='0.2%';
+    b.appendChild(t);
+  }
+  // rank labels at the left edge, each next to its own row (flip-aware)
+  for(let r=1;r<=9;r++){
+    const t=document.createElement('div'); t.className='rl'; t.textContent=r;
+    const p = centerOf(0, r);
+    t.style.left='0.4%'; t.style.top=(p.y-5)+'%';
+    b.appendChild(t);
+  }
   for(const w of st.walls){
-    const typ=w[0], X=w.charCodeAt(1)-97, Y=parseInt(w.slice(2),10), el=document.createElement('div');
-    el.className='wall';
-    if(typ==='h'){ el.style.left=(X*100/9)+'%'; el.style.top='calc(' + ((9-Y)*100/9) + '% - 2px)'; el.style.width=(2*100/9)+'%'; el.style.height='4px'; }
-    else { el.style.left='calc(' + ((X+1)*100/9) + '% - 2px)'; el.style.top=((8-Y)*100/9)+'%'; el.style.width='4px'; el.style.height=(2*100/9)+'%'; }
+    const g = wallRect(w);
+    const el=document.createElement('div'); el.className='wall';
+    el.style.left=g.left+'%'; el.style.top=g.top+'%';
+    el.style.width=g.width+'%'; el.style.height=g.height+'%';
     b.appendChild(el);
   }
   for(const col of ['red','blue']){
-    const p=posOf(st.pawns[col]), el=document.createElement('div');
-    el.className='pawn '+col; el.style.left=p.x+'%'; el.style.top=p.y+'%';
+    const sq=st.pawns[col], p=sqCenter(sq), el=document.createElement('div');
+    el.className='pawn '+col+(sel===sq?' sel':''); el.style.left=p.x+'%'; el.style.top=p.y+'%';
+    b.appendChild(el);
+  }
+  if(dots) for(const d of dots){
+    const p=sqCenter(d.sq), el=document.createElement('div');
+    el.className='dot '+(d.kind||'step'); el.style.left=p.x+'%'; el.style.top=p.y+'%';
     b.appendChild(el);
   }
 }
-
-// The server validates a candidate history before it becomes the displayed state.
+// ---- server interaction ----
 let validating = false;
 let winner = null;
 let retryTimer;
@@ -130,8 +205,10 @@ function clearAdvice(message){
 function save(){
   try { localStorage.setItem('barricade-coach',JSON.stringify({hist,me})); } catch {}
 }
+function setBoardHint(msg){ $('boardHint').textContent=msg||''; }
 function showState(d){
-  renderBoard(boardState(hist));
+  selectedPawn=null;
+  renderBoard(boardState(hist), null, null);
   $('histBox').textContent=hist.join(', ');
   $('sp').textContent='Paths: red '+d.sp.red+' · blue '+d.sp.blue+
     ' | Walls left: red '+d.remaining.red+' · blue '+d.remaining.blue;
@@ -140,9 +217,19 @@ function showState(d){
   const reference=d.opening_reference;
   $('masters').textContent=reference && reference.moves.length ? 'Study players chose: '+
     reference.moves.map(r=>r.move+' ('+r.games+' games)').join(', ')+' · from '+reference.source_games+' downloaded study games; not best-move proof' : '';
+  if(winner) setBoardHint('Game over — '+winner+' won');
+  else setBoardHint(clickHint());
+  syncTools();
+}
+function clickHint(){
+  const side=toMove(), mineSide=side===me;
+  if(winner) return '';
+  if(mineSide) return 'Your move ('+side+') — click your pawn, then a highlighted square, or press Play';
+  return side+' to move (opponent) — click their pawn then a target to record it';
 }
 async function request(path,h,extra=''){
-  const r=await fetch(path+'?h='+encodeURIComponent(h.join(','))+extra);
+  const hParam = Array.isArray(h) ? h.join(',') : h;
+  const r=await fetch(path+'?h='+encodeURIComponent(hParam)+extra);
   const d=await r.json();
   if(!r.ok) { const e=new Error(d.error || 'Request failed'); e.status=r.status; throw e; }
   return d;
@@ -161,6 +248,7 @@ async function refresh(){
     showState(d);
     $('stateLine').textContent='Moves: '+hist.length+' · '+d.to_move+' to move';
     if(d.winner) { clearAdvice(d.winner.toUpperCase()+' wins'); return; }
+    fetchLegal();
     if(!mine) return;
     const info=d.search;
     if(info.engine!==engine) throw new Error('Server version mismatch. Restart the coach on an unused port.');
@@ -193,18 +281,29 @@ async function acceptHistory(candidate){
   try {
     const d=await request('/api/state',candidate);
     if(t!==token) return false;
-    hist=d.history; showState(d); save(); refresh(); return true;
+    hist=d.history; showState(d); save(); fetchLegal(); refresh(); return true;
   } catch(e) {
     if(t===token){ $('error').textContent=e.message; refresh(); }
     return false;
   } finally { validating=false; }
 }
+async function fetchLegal(){
+  const t=token;
+  try {
+    const d=await request('/api/legal',hist);
+    if(t!==token || winner) return;
+    legal=d; syncTools();
+  } catch(e){ /* non-fatal: click-to-move unavailable */ }
+}
 async function pushMove(m){
   if(!m || winner) return;
+  selectedPawn=null; wallTool=null; syncTools();
   if(await acceptHistory([...hist,m.trim().toLowerCase()])) $('oppMove').value='';
 }
 function setMe(c){
-  me=c; renderColor(); save(); if(!validating) refresh();
+  me=c; renderColor(); save(); renderBoard(boardState(hist),null,null);
+  setBoardHint(clickHint()); syncTools();
+  if(!validating) refresh();
 }
 function renderColor(){
   for(const color of ['red','blue']){
@@ -213,14 +312,96 @@ function renderColor(){
     button.setAttribute('aria-pressed',String(color===me));
   }
 }
+function syncTools(){
+  const side=winner?null:toMove(), noWalls=!side || !legal || legal.walls_left[side]===0;
+  $('toolH').disabled=!!noWalls; $('toolV').disabled=!!noWalls;
+  $('toolH').className='tool'+(wallTool==='h'?' active':'');
+  $('toolV').className='tool'+(wallTool==='v'?' active':'');
+  $('toolOff').className='tool'+(wallTool===null?' active':'');
+}
 $('playRed').onclick=()=>setMe('red');
 $('playBlue').onclick=()=>setMe('blue');
+$('toolH').onclick=()=>{ wallTool=wallTool==='h'?null:'h'; selectedPawn=null; renderBoard(boardState(hist),null,null); syncTools(); setBoardHint(wallTool?'Wall mode — click the board to place a horizontal wall':clickHint()); if(wallTool) fetchLegal(); };
+$('toolV').onclick=()=>{ wallTool=wallTool==='v'?null:'v'; selectedPawn=null; renderBoard(boardState(hist),null,null); syncTools(); setBoardHint(wallTool?'Wall mode — click the board to place a vertical wall':clickHint()); if(wallTool) fetchLegal(); };
+$('toolOff').onclick=()=>{ wallTool=null; renderBoard(boardState(hist),null,null); syncTools(); setBoardHint(clickHint()); };
 $('oppMove').addEventListener('keydown',e=>{ if(e.key==='Enter') pushMove(e.target.value); });
-$('undo').onclick=()=>{ if(hist.length) acceptHistory(hist.slice(0,-1)); };
-$('reset').onclick=()=>acceptHistory([]);
-$('loadHistory').onclick=()=>acceptHistory($('historyInput').value.trim() ? $('historyInput').value.split(',') : []);
+$('undo').onclick=()=>{ if(hist.length){ wallTool=null; selectedPawn=null; syncTools(); showGhost(null); acceptHistory(hist.slice(0,-1)); } };
+$('reset').onclick=()=>{ wallTool=null; selectedPawn=null; syncTools(); showGhost(null); acceptHistory([]); };
+$('loadHistory').onclick=()=>{
+  wallTool=null; selectedPawn=null; syncTools(); showGhost(null);
+  const raw=$('historyInput').value.trim();
+  if(!raw){ acceptHistory([]); return; }
+  // barricade.gg share format ("1.e2e8 2.e3e7 ...") or a plain comma list
+  const candidate = /^\d+\s*\./.test(raw) ? raw : raw.split(',');
+  acceptHistory(candidate);
+};
+$('historyInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('loadHistory').click(); });
 $('searchMode').onchange=()=>{ if(!validating) refresh(); };
 $('engine').onchange=()=>{ if(!validating) refresh(); };
+
+// ---- click-to-move / click-to-wall ----
+const board=$('board');
+function showGhost(w, ok){
+  const old=document.querySelector('.ghost'); if(old) old.remove();
+  if(!w) return;
+  const b=wallRect(w), el=document.createElement('div');
+  el.className='ghost '+(w[0]==='h'?'h':'v')+(ok?' ok':' bad');
+  el.style.left=b.left+'%'; el.style.top=b.top+'%';
+  el.style.width=b.width+'%'; el.style.height=b.height+'%';
+  $('board').appendChild(el);
+}
+function nearestWall(px,py,rect,tool){
+  if(!legal || !legal.legal_walls.length) return null;
+  const set=new Set(legal.legal_walls.filter(w=>!tool||w[0]===tool));
+  if(!set.size) return null;
+  let best=null, bestD=1e9;
+  for(const w of set){
+    const b=wallRect(w);
+    const cx=b.left+b.width/2, cy=b.top+b.height/2;
+    const x=px/rect.width*100, y=py/rect.height*100;
+    const d=(x-cx)*(x-cx)+(y-cy)*(y-cy);
+    if(d<bestD){ bestD=d; best=w; }
+  }
+  return best;
+}
+board.addEventListener('mousemove', e=>{
+  if(!wallTool) return;
+  const rect=board.getBoundingClientRect();
+  const w=nearestWall(e.clientX-rect.left, e.clientY-rect.top, rect, wallTool);
+  showGhost(w, w && legal && legal.legal_walls.includes(w));
+});
+board.addEventListener('mouseleave', ()=>showGhost(null));
+board.addEventListener('click', e=>{
+  const rect=board.getBoundingClientRect();
+  const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  const sq=squareAt(px,py,rect).sq;
+  if(winner) return;
+  if(wallTool){
+    const w=nearestWall(px,py,rect,wallTool);
+    showGhost(null);
+    if(w && legal && legal.legal_walls.includes(w)){ pushMove(w); }
+    else $('error').textContent='That wall is not legal there';
+    return;
+  }
+  const side=toMove();
+  const st=boardState(hist);
+  if(sq===st.pawns[side]){
+    // select pawn, show legal destinations
+    selectedPawn=(selectedPawn===sq)?null:sq;
+    const dots=(legal && selectedPawn && legal.to_move===side) ?
+      legal.legal_pawn.map(d=>({sq:d, kind:'step'})) : [];
+    renderBoard(st, selectedPawn, dots);
+    setBoardHint(selectedPawn?clickHint()+' — now click a highlighted square':'');
+    return;
+  }
+  // clicking a destination square moves there
+  if(legal && legal.to_move===side && legal.legal_pawn.includes(sq)){
+    pushMove(sq);
+    return;
+  }
+  // deselect
+  if(selectedPawn){ selectedPawn=null; renderBoard(st,null,null); setBoardHint(clickHint()); }
+});
 async function init(){
   let saved;
   try { saved=JSON.parse(localStorage.getItem('barricade-coach')); } catch {}

@@ -24,10 +24,41 @@ from functools import lru_cache
 
 WIN = 100000
 
+_SHARE_NUM = re.compile(r'(?:^|\s)\d+\s*\.')
+_PLY_RE = re.compile(r'[a-i][1-9]|[hv][a-h][1-8]')
+
 def parse_history(value):
+    """Accept a comma list ('e2,e8,e3') or a barricade.gg share string
+    ('1.e2e8 2.e3e7 3.hd2hd6 ...'), where each numbered group holds the
+    concatenated red+blue ply of that round."""
     if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return []
+        if _SHARE_NUM.search(value):
+            return share_to_moves(value)
         value = value.split(',') if value.strip() else []
     return [normalize_move(m) for m in value]
+
+def share_to_moves(text):
+    """barricade.gg 'N.rrbb N.rrbb ...' -> flat ply list (alternating red/blue).
+    A ply is a pawn square (e2) or a wall (hd4 / ve3); each group concatenates
+    the two plies of a round, so split greedily by ply shape."""
+    out = []
+    for group in text.split():
+        group = _SHARE_NUM.sub('', group, count=1)
+        if not group:
+            continue
+        i, n = 0, len(group)
+        while i < n:
+            c = group[i]
+            if c in 'hv' and i + 2 < n and group[i + 2].isdigit() and not group[i + 1].isdigit():
+                out.append(group[i:i + 3]); i += 3          # wall: hd4, ve3
+            elif c in 'hv' and i + 1 < n and group[i + 1].isdigit():
+                out.append(group[i:i + 2]); i += 2          # pawn on h/v file
+            else:
+                out.append(group[i:i + 2]); i += 2          # pawn: e2
+    return [normalize_move(m) for m in out]
 
 def normalize_move(m):
     if not isinstance(m, str):
