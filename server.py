@@ -4,8 +4,10 @@ Usage: python3 server.py  ->  http://127.0.0.1:8810
 """
 import json
 import os
+import random
 import sys
 import threading
+import time
 import socket
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +56,58 @@ def json_or(text):
         return json.loads(text)
     except ValueError:
         return None
+
+
+# On-demand opponent collection: download one player's games, build their model.
+# Deliberately does NOT write study/collection-summary.json (the harvest owns that
+# file) and uses the same jittered pacing as collect_games so it stays gentle.
+import collect_games  # noqa: E402  (imports coach already)
+
+def fetch_opponent_model(name):
+    """Collect `name`'s public games and build their learning model. Returns the
+    model dict, or None if the player has no games / errors out."""
+    profiles_dir = os.path.join(ROOT, 'study', 'profiles')
+    archive_dir = os.path.join(ROOT, 'study', 'archive')
+    os.makedirs(profiles_dir, exist_ok=True)
+    os.makedirs(archive_dir, exist_ok=True)
+    profile = os.path.join(profiles_dir, f'{name}.json')
+    if not os.path.exists(profile):
+        collect_games.collect([name])
+    try:
+        with open(profile, encoding='utf-8') as f:
+            games = json.load(f)
+    except (ValueError, OSError):
+        return None
+    if not games:
+        return None
+    records = []
+    for g in games:
+        code = g.get('shareCode')
+        if not code:
+            continue
+        path = os.path.join(archive_dir, f'{code}.json')
+        data = None
+        if os.path.exists(path):
+            try:
+                data = json.loads(open(path, encoding='utf-8').read())
+            except (ValueError, OSError):
+                pass
+        if data is None:
+            try:
+                data = collect_games.get('/games/' + code)
+                tmp = path + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    json.dump(data, f)
+                os.replace(tmp, path)
+                time.sleep(random.uniform(1.5, 3.0))
+            except Exception:
+                continue
+        records.append(data)
+    if not records:
+        return None
+    model = learning.build_opponent_model(name, records)
+    learning.save_opponent(name, model)
+    return model
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # silence
@@ -165,6 +219,32 @@ class Handler(BaseHTTPRequestHandler):
                 })
             except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e), 'legal_history': False})
+            return
+        if u.path == '/api/opponent/fetch':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            name = q.get('name', [''])[0]
+            if not name or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in name):
+                self._send(400, {'error': 'Provide ?name=<username>'})
+                return
+            # Collect + build synchronously (jittered, rate-limit aware). A fresh
+            # player with a few hundred games takes minutes; cached returns fast.
+            try:
+                model = learning.load_opponent(name)
+                if model:
+                    self._send(200, {'name': name, 'status': 'ready', 'games': model.get('games'),
+                                     'wins': model.get('wins')})
+                    return
+                model = fetch_opponent_model(name)
+                if not model:
+                    self._send(404, {'error': f'No games found for {name}', 'name': name})
+                    return
+                self._send(200, {'name': name, 'status': 'built', 'games': model.get('games'),
+                                 'wins': model.get('wins')})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
             return
         if u.path == '/api/opponent':
             q = parse_qs(u.query)
