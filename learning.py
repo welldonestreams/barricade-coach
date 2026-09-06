@@ -4,16 +4,17 @@ Stores every completed game (position -> move -> outcome per ply) and builds
 per-opponent tendency models from public game histories.  All data stays
 local under memory/ (gitignored); nothing is sent anywhere.
 
-Layout:
-  memory/games/<sharecode>.json   raw game record (history, result, players)
-  memory/outcomes.json            position -> move -> {won, lost, games}
-  memory/opponents/<name>.json    learned tendency model for one opponent
+Storage:
+  memory/learning.db            SQLite (outcomes + eval-deltas + game dedup);
+                                WAL mode, safe for concurrent writers
+  memory/opponents/<name>.json  learned tendency model for one opponent
 """
 from __future__ import annotations
 
+import hashlib
 import json
-import os
 import re
+import sqlite3
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -24,103 +25,122 @@ ROOT = Path(__file__).resolve().parent
 MEMORY = ROOT / 'memory'
 GAMES = MEMORY / 'games'
 OPPONENTS = MEMORY / 'opponents'
-OUTCOMES = MEMORY / 'outcomes.json'
+OUTCOMES = MEMORY / 'outcomes.json'   # legacy JSON (migrated on first use)
+EVALS = MEMORY / 'eval-deltas.json'   # legacy JSON (migrated on first use)
+DB = MEMORY / 'learning.db'
 
 NAME_OK = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
 
 
 def _ensure():
-    GAMES.mkdir(parents=True, exist_ok=True)
+    MEMORY.mkdir(parents=True, exist_ok=True)
     OPPONENTS.mkdir(parents=True, exist_ok=True)
+
+
+def _db():
+    _ensure()
+    con = sqlite3.connect(str(DB), timeout=15.0)
+    con.execute('PRAGMA journal_mode=WAL')
+    con.execute('PRAGMA synchronous=NORMAL')
+    con.execute('PRAGMA busy_timeout=15000')
+    return con
+
+
+def _init(con):
+    con.execute('''CREATE TABLE IF NOT EXISTS outcomes(
+        position TEXT NOT NULL, move TEXT NOT NULL,
+        won INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(position, move))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS evals(
+        position TEXT NOT NULL, move TEXT NOT NULL,
+        games INTEGER NOT NULL DEFAULT 0, sum_delta REAL NOT NULL DEFAULT 0,
+        won INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(position, move))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS games(
+        key TEXT PRIMARY KEY, played_at TEXT)''')
+
+
+def _stable_key(history_csv):
+    return hashlib.md5(history_csv.encode('utf-8', 'replace')).hexdigest()[:16]
+
+
+def _now():
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
 
 # --------------------------------------------------------------------------
 # Outcome memory: position -> move -> won/lost, aggregated over all recorded games
 # --------------------------------------------------------------------------
 
-def _empty_outcomes():
-    return {'version': 1, 'positions': {}, 'games': 0, 'updated': None}
-
-
-def load_outcomes():
-    _ensure()
-    if OUTCOMES.exists():
-        try:
-            return json.loads(OUTCOMES.read_text(encoding='utf-8'))
-        except (ValueError, OSError):
-            pass
-    return _empty_outcomes()
-
-
-def save_outcomes(data):
-    _ensure()
-    data['updated'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    tmp = OUTCOMES.with_suffix('.tmp')
-    tmp.write_text(json.dumps(data), encoding='utf-8')
-    tmp.replace(OUTCOMES)
-
-
 def record_game(history_csv, winner, red_name=None, blue_name=None,
-                sharecode=None, opp_rating=None, source='live'):
-    """history_csv: comma ply list. winner: 'red'/'blue'/None(draw).
-    winner is from the *board*; record_game converts to 'side to move won'.
-    """
+                sharecode=None, opp_rating=None, source='live', seed_len=0):
+    """Record a finished game into outcome memory.
+
+    history_csv: comma ply list. winner: 'red'/'blue'/None(draw).
+    seed_len: if this game was self-play continued from an imported position,
+    only plies >= seed_len are recorded (the seed prefix is context, not a
+    self-play outcome we should learn from).
+    Returns True if newly recorded, False if a duplicate."""
     _ensure()
     try:
         game = coach.Game(coach.parse_history(history_csv))
     except ValueError as exc:
         raise ValueError(f'Game does not replay: {exc}')
-    winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
     if winner not in (None, 'red', 'blue'):
         raise ValueError('winner must be red, blue or null')
-    # avoid double-recording identical games
-    key = sharecode or hash(history_csv) & 0xFFFFFFFF
-    path = GAMES / f'{key}.json'
-    if path.exists():
-        return False
-    record = {
-        'history': game.history,
-        'winner': winner,
-        'red': red_name, 'blue': blue_name,
-        'opp_rating': opp_rating,
-        'source': source,
-        'played_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        'plies': len(game.history),
-    }
-    path.write_text(json.dumps(record), encoding='utf-8')
+    winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
 
-    data = load_outcomes()
-    positions = data['positions']
-    # for each ply, position before the move; the mover won iff mover==winner
-    g = coach.Game()
-    for i, mv in enumerate(game.history):
-        mover = g.to_move
-        pos = ','.join(g.history)
-        outcome = 'won' if mover == winner_side else 'lost'
-        cell = positions.setdefault(pos, {}).setdefault(mv, {'won': 0, 'lost': 0})
-        cell[outcome] += 1
-        try:
-            g.apply(mv)
-        except ValueError:
-            break
-    data['games'] += 1
-    save_outcomes(data)
-    return True
+    key = sharecode or _stable_key(history_csv)
+    con = _db()
+    _init(con)
+    try:
+        if con.execute('SELECT 1 FROM games WHERE key=?', (key,)).fetchone():
+            return False
+        con.execute('INSERT INTO games(key, played_at) VALUES(?,?)', (key, _now()))
+        g = coach.Game()
+        for i, mv in enumerate(game.history):
+            mover = g.to_move
+            if i < seed_len:
+                try:
+                    g.apply(mv)
+                except ValueError:
+                    break
+                continue
+            pos = ','.join(g.history)
+            if mover == winner_side:
+                con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,1,0)
+                               ON CONFLICT(position,move) DO UPDATE SET won=won+1''', (pos, mv))
+            else:
+                con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,0,1)
+                               ON CONFLICT(position,move) DO UPDATE SET lost=lost+1''', (pos, mv))
+            try:
+                g.apply(mv)
+            except ValueError:
+                break
+        con.commit()
+        return True
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 
 def outcome_stats(history):
     """Return {move: {won, lost, total, winrate}} for legal moves at this
     position, from the recorded games (empty dict if unseen)."""
     pos = ','.join(history)
-    data = load_outcomes()
-    raw = data['positions'].get(pos, {})
+    con = _db()
+    _init(con)
+    try:
+        rows = con.execute('SELECT move, won, lost FROM outcomes WHERE position=?', (pos,)).fetchall()
+    finally:
+        con.close()
     out = {}
-    for mv, cell in raw.items():
-        won, lost = cell.get('won', 0), cell.get('lost', 0)
+    for mv, won, lost in rows:
         total = won + lost
         if total:
-            out[mv] = {'won': won, 'lost': lost, 'total': total,
-                       'winrate': won / total}
+            out[mv] = {'won': won, 'lost': lost, 'total': total, 'winrate': won / total}
     return out
 
 
@@ -128,78 +148,143 @@ def outcome_stats(history):
 # Eval-delta ("why") memory: position -> move -> avg eval swing + outcome
 # --------------------------------------------------------------------------
 
-EVALS = MEMORY / 'eval-deltas.json'
-
-
-def _empty_evals():
-    return {'version': 1, 'positions': {}, 'games': 0, 'updated': None}
-
-
-def load_evals():
-    _ensure()
-    if EVALS.exists():
-        try:
-            return json.loads(EVALS.read_text(encoding='utf-8'))
-        except (ValueError, OSError):
-            pass
-    return _empty_evals()
-
-
-def save_evals(data):
-    _ensure()
-    data['updated'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    tmp = EVALS.with_suffix('.tmp')
-    tmp.write_text(json.dumps(data), encoding='utf-8')
-    tmp.replace(EVALS)
-
-
-def record_evals(history_csv, winner):
+def record_evals(history_csv, winner, seed_len=0):
     """Replay a finished game and record the causal 'why' per move.
 
-    For each ply, store how much the move swung the mover's evaluation
-    (delta = eval_before - eval_after; eval is lower-is-better, so positive
-    delta means the move helped the mover, negative means it hurt), tagged by
-    whether that mover went on to win. Aggregated, this separates moves that
-    actually win games from moves that merely look common.
-    """
+    For each ply >= seed_len, store how much the move swung the mover's
+    evaluation (delta = eval_before - eval_after; eval is lower-is-better, so
+    positive delta means the move helped the mover, negative means it hurt),
+    tagged by whether that mover went on to win."""
     game = coach.Game(coach.parse_history(history_csv))
     winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
     if winner not in (None, 'red', 'blue'):
         raise ValueError('winner must be red, blue or null')
-    data = load_evals()
-    g = coach.Game()
-    for mv in game.history:
-        pos = ','.join(g.history)
-        mover = g.to_move
-        before = g.eval_side(mover)
-        g.apply(mv)
-        after = g.eval_side(mover)
-        delta = before - after
-        cell = data['positions'].setdefault(pos, {}).setdefault(
-            mv, {'games': 0, 'sum_delta': 0.0, 'won': 0, 'lost': 0})
-        cell['games'] += 1
-        cell['sum_delta'] += delta
-        if mover == winner_side:
-            cell['won'] += 1
-        else:
-            cell['lost'] += 1
-    data['games'] += 1
-    save_evals(data)
-    return True
+    con = _db()
+    _init(con)
+    try:
+        g = coach.Game()
+        for i, mv in enumerate(game.history):
+            if i < seed_len:
+                try:
+                    g.apply(mv)
+                except ValueError:
+                    break
+                continue
+            pos = ','.join(g.history)
+            mover = g.to_move
+            before = g.eval_side(mover)
+            g.apply(mv)
+            after = g.eval_side(mover)
+            delta = before - after
+            won = 1 if mover == winner_side else 0
+            lost = 0 if mover == winner_side else 1
+            con.execute('''INSERT INTO evals(position,move,games,sum_delta,won,lost)
+                           VALUES(?,?,1,?,?,?)
+                           ON CONFLICT(position,move) DO UPDATE SET
+                             games=games+1, sum_delta=sum_delta+excluded.sum_delta,
+                             won=won+excluded.won, lost=lost+excluded.lost''',
+                        (pos, mv, delta, won, lost))
+        con.commit()
+        return True
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 
 def eval_delta_stats(history):
-    """For the current position, return {move: {games, avg_delta, won, lost}} —
-    the learned 'why': how much each move has historically swung the game, and
-    how often it led to a win for the mover."""
+    """For the current position, return {move: {games, avg_delta, won, lost}}."""
     pos = ','.join(history)
-    data = load_evals()
-    raw = data['positions'].get(pos, {})
+    con = _db()
+    _init(con)
+    try:
+        rows = con.execute('SELECT move, games, sum_delta, won, lost FROM evals WHERE position=?',
+                           (pos,)).fetchall()
+    finally:
+        con.close()
     out = {}
-    for mv, cell in raw.items():
-        out[mv] = {'games': cell['games'], 'avg_delta': cell['sum_delta'] / cell['games'],
-                   'won': cell['won'], 'lost': cell['lost']}
+    for mv, games, sum_delta, won, lost in rows:
+        if games:
+            out[mv] = {'games': games, 'avg_delta': sum_delta / games, 'won': won, 'lost': lost}
     return out
+
+
+def memory_stats():
+    """Lightweight counts for /api/memory display."""
+    con = _db()
+    _init(con)
+    try:
+        games = con.execute('SELECT COUNT(*) FROM games').fetchone()[0]
+        positions = con.execute('SELECT COUNT(*) FROM outcomes').fetchone()[0]
+    finally:
+        con.close()
+    return {'positions': positions, 'games': games}
+
+
+# --------------------------------------------------------------------------
+# Legacy JSON migration (one-time; idempotent)
+# --------------------------------------------------------------------------
+
+def migrate_legacy_json():
+    """Pull any legacy outcomes.json / eval-deltas.json into SQLite. No-op if
+    the JSON files are absent or already empty."""
+    _ensure()
+    if OUTCOMES.exists():
+        try:
+            data = json.loads(OUTCOMES.read_text(encoding='utf-8'))
+        except (ValueError, OSError):
+            data = None
+        if data and data.get('positions'):
+            con = _db()
+            _init(con)
+            try:
+                for pos, moves in data['positions'].items():
+                    for mv, cell in moves.items():
+                        con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,?,?)
+                                       ON CONFLICT(position,move) DO UPDATE SET
+                                         won=won+excluded.won, lost=lost+excluded.lost''',
+                                    (pos, mv, cell.get('won', 0), cell.get('lost', 0)))
+                con.commit()
+            finally:
+                con.close()
+        OUTCOMES.rename(OUTCOMES.with_suffix('.json.migrated'))
+    if EVALS.exists():
+        try:
+            data = json.loads(EVALS.read_text(encoding='utf-8'))
+        except (ValueError, OSError):
+            data = None
+        if data and data.get('positions'):
+            con = _db()
+            _init(con)
+            try:
+                for pos, moves in data['positions'].items():
+                    for mv, cell in moves.items():
+                        con.execute('''INSERT INTO evals(position,move,games,sum_delta,won,lost)
+                                       VALUES(?,?,?,?,?,?)
+                                       ON CONFLICT(position,move) DO UPDATE SET
+                                         games=games+excluded.games,
+                                         sum_delta=sum_delta+excluded.sum_delta,
+                                         won=won+excluded.won, lost=lost+excluded.lost''',
+                                    (pos, mv, cell.get('games', 0), cell.get('sum_delta', 0.0),
+                                     cell.get('won', 0), cell.get('lost', 0)))
+                con.commit()
+            finally:
+                con.close()
+        EVALS.rename(EVALS.with_suffix('.json.migrated'))
+    # Rebuild the games table key from any leftover memory/games/*.json so
+    # dedup counts stay consistent.
+    if GAMES.exists():
+        con = _db()
+        _init(con)
+        try:
+            for path in sorted(GAMES.glob('*.json')):
+                key = path.stem
+                con.execute('INSERT OR IGNORE INTO games(key, played_at) VALUES(?,?)',
+                            (key, _now()))
+            con.commit()
+        finally:
+            con.close()
 
 
 # --------------------------------------------------------------------------
@@ -207,8 +292,6 @@ def eval_delta_stats(history):
 # --------------------------------------------------------------------------
 
 def _game_side(game, name):
-    """Return (side_index, opponent_index) for `name` in a raw archive game,
-    or None if name didn't play. player1 = red (coach.RED=0), player2 = blue."""
     if game.get('player1Username') == name:
         return 0, 1
     if game.get('player2Username') == name:
@@ -217,9 +300,8 @@ def _game_side(game, name):
 
 
 def _winner_side(game):
-    """winner field is '1' or '2' (player number, 1-indexed); map to side index."""
     w = game.get('winner')
-    if w in (0, 1) and not isinstance(w, bool):  # tolerate int-0/1 too
+    if w in (0, 1) and not isinstance(w, bool):
         return int(w)
     try:
         return int(w) - 1
@@ -227,13 +309,7 @@ def _winner_side(game):
         return None
 
 
-def _plies_for_side(history, side):
-    return history[side::2]
-
-
 def build_opponent_model(name, game_records):
-    """game_records: list of raw barricade.gg game dicts (as collected by
-    collect_games.py). Learns opening repertoire and response stats."""
     if not NAME_OK.match(name):
         raise ValueError('Invalid opponent name')
     model = {
@@ -243,9 +319,7 @@ def build_opponent_model(name, game_records):
         'rating_high': None, 'rating_low': None,
         'openings': {'red': defaultdict(lambda: defaultdict(int)),
                      'blue': defaultdict(lambda: defaultdict(int))},
-        # position -> their move -> count (their side to move at that position)
         'responses': defaultdict(lambda: defaultdict(int)),
-        # positions where they moved and lost shortly after (blunder rough)
         'loss_positions': defaultdict(int),
         'avg_move_ms': None,
         'move_times': [],
@@ -280,7 +354,6 @@ def build_opponent_model(name, game_records):
             model['wins'] += 1
         mt = game.get('moveTimes') or []
         if mt:
-            # moveTimes indexed by ply over the whole game
             model['move_times'].extend(mt)
         rb = game.get('p1Rating' if my_side == 0 else 'p2Rating')
         if rb:
@@ -288,7 +361,6 @@ def build_opponent_model(name, game_records):
             model['rating_low'] = min(model['rating_low'] or rb, rb)
     if model['move_times']:
         model['avg_move_ms'] = sum(model['move_times']) / len(model['move_times'])
-    # convert defaultdicts to plain
     model['openings'] = {k: {m: dict(d) for m, d in v.items()}
                          for k, v in model['openings'].items()}
     model['responses'] = {p: dict(d) for p, d in model['responses'].items()}
@@ -313,16 +385,12 @@ def load_opponent(name):
 
 
 def opponent_insight(name, history):
-    """Given an opponent model and the current position, return a short
-    human line: what they typically do here and whether they've lost from it."""
     model = load_opponent(name)
     if not model:
         return None
     pos = ','.join(history)
     resp = model['responses'].get(pos)
     if not resp:
-        # try openings if very early
-        color = 'red' if len(history) % 2 == 0 else 'blue'
         if len(history) < 6:
             return {'known': False, 'games': model['games'],
                     'wins': model['wins'], 'note': 'early game'}

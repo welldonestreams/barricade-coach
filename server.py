@@ -287,8 +287,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 hist = parse_move(q.get('h', [''])[0])
-                self._send(200, {'positions': len(learning.load_outcomes().get('positions', {})),
-                                 'games': learning.load_outcomes().get('games', 0),
+                s = learning.memory_stats()
+                self._send(200, {'positions': s['positions'],
+                                 'games': s['games'],
                                  'stats': learning.outcome_stats(hist)})
             except Exception as e:
                 self._send(400, {'error': str(e)})
