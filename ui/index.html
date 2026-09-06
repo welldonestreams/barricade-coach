@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barricade Coach</title>
+<style>
+  :root { --bg:#121418; --line:#333; --red:#e5484d; --blue:#3b82f6; --text:#e8e8ea; --dim:#9aa; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  .pill { border:1px solid var(--line); border-radius:999px; padding:3px 10px; cursor:pointer; user-select:none; font-size:13px; }
+  .pill.active.red { border-color:var(--red); color:var(--red); font-weight:700; }
+  .pill.active.blue { border-color:var(--blue); color:var(--blue); font-weight:700; }
+  main { display:flex; gap:20px; padding:16px; flex-wrap:wrap; justify-content:center; }
+  .boardwrap { position:relative; width:min(78vw,420px); aspect-ratio:1; }
+  .board { position:absolute; inset:0; background:#d9d2b8; }
+  .cell { position:absolute; border:1px solid rgba(0,0,0,.12); background:#e8e2cd; }
+  .cell.alt { background:#d9d2b8; }
+  .cell.goalred { background:#f3c1c3; } .cell.goalblue { background:#c3d5f3; }
+  .pawn { position:absolute; border-radius:50%; width:9%; height:9%; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.5); z-index:3; }
+  .pawn.red { background:var(--red); } .pawn.blue { background:var(--blue); }
+  .wall { position:absolute; background:#241f0e; z-index:2; }
+  .rl { position:absolute; font-size:10px; color:#000; opacity:.5; z-index:1; }
+  .panel { width:min(96vw,380px); display:flex; flex-direction:column; gap:10px; }
+  .big { font-size:34px; font-weight:800; text-align:center; padding:14px; border-radius:12px; cursor:pointer; }
+  .big.red { background:rgba(229,72,77,.16); color:var(--red); }
+  .big.blue { background:rgba(59,130,246,.16); color:var(--blue); }
+  .big.wait { background:#23262e; color:var(--dim); font-size:16px; font-weight:500; cursor:default; }
+  button { background:#2a2e38; color:var(--text); border:1px solid #3a3f4c; border-radius:8px; padding:9px 12px; font-size:14px; cursor:pointer; }
+  button:hover { background:#343947; }
+  .top3 { display:flex; gap:6px; flex-wrap:wrap; min-height:38px; }
+  .top3 button { flex:1; min-width:70px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  input[type=text] { flex:1; background:#14161b; color:var(--text); border:1px solid #3a3f4c; border-radius:8px; padding:9px; font-size:16px; }
+  .meta { font-size:12px; color:var(--dim); line-height:1.5; }
+  .hist { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:#14161b; border:1px solid #2a2e38; border-radius:8px; padding:8px; min-height:60px; }
+  .sp { display:flex; gap:14px; font-size:13px; }
+  .sp .rv { color:var(--red); } .sp .bv { color:var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Barricade Coach</h1>
+  <span style="font-size:13px;color:var(--dim)">I play:</span>
+  <span id="mePill" class="pill"></span>
+  <button id="undo" style="margin-left:auto">↶ undo</button>
+  <button id="reset">reset</button>
+</header>
+<main>
+  <div class="boardwrap"><div id="board" class="board"></div></div>
+  <div class="panel">
+    <div id="big" class="big wait">…</div>
+    <div class="top3" id="top3"></div>
+    <div class="row"><input id="oppMove" type="text" placeholder="opponent move, e.g. hd5 → Enter" autocomplete="off"></div>
+    <div class="sp" id="sp"></div>
+    <div class="meta" id="stateLine"></div>
+    <div class="hist" id="histBox"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let hist = [];
+let me = 'red';
+let token = 0;
+
+const toMove = () => hist.length % 2 === 0 ? 'red' : 'blue';
+
+// ---- local board model (mirror of coach.py geometry) ----
+function boardState(h){
+  const walls = new Set();
+  const pawns = { red:'e1', blue:'e9' };
+  let r = 0;
+  for(const m of h){
+    const side = r % 2 === 0 ? 'red' : 'blue';
+    if(m.length === 3 && (m[0]==='h'||m[0]==='v')) walls.add(m);
+    else pawns[side] = m;
+    r++;
+  }
+  return { walls, pawns };
+}
+function posOf(sq){ const f = sq.charCodeAt(0)-97, r = parseInt(sq.slice(1),10);
+  return { x:(f+.5)*100/9, y:(9.5-r)*100/9 }; }
+function renderBoard(st){
+  const b = $('board'); b.innerHTML='';
+  for(let r=1;r<=9;r++) for(let f=0;f<9;f++){
+    const c=document.createElement('div');
+    c.className='cell' + ((f+r)%2?' alt':'') + (r===9?' goalred':r===1?' goalblue':'');
+    c.style.left=(f*100/9)+'%'; c.style.top=((9-r)*100/9)+'%';
+    c.style.width=(100/9)+'%'; c.style.height=(100/9)+'%';
+    b.appendChild(c);
+  }
+  for(let r=1;r<=9;r++){ const t=document.createElement('div'); t.className='rl'; t.textContent=r;
+    t.style.left='0.4%'; t.style.top=((9.3-r)*100/9)+'%'; b.appendChild(t); }
+  for(const w of st.walls){
+    const typ=w[0], X=w.charCodeAt(1)-97, Y=parseInt(w.slice(2),10), el=document.createElement('div');
+    el.className='wall';
+    if(typ==='h'){ el.style.left=(X*100/9)+'%'; el.style.top=((9-Y)*100/9 - 2)+'%'; el.style.width=(2*100/9)+'%'; el.style.height='4px'; }
+    else { el.style.left=((X+1)*100/9 - 2)+'%'; el.style.top=((8-Y)*100/9)+'%'; el.style.width='4px'; el.style.height=(2*100/9)+'%'; }
+    b.appendChild(el);
+  }
+  for(const col of ['red','blue']){
+    const p=posOf(st.pawns[col]), el=document.createElement('div');
+    el.className='pawn '+col; el.style.left=p.x+'%'; el.style.top=p.y+'%';
+    b.appendChild(el);
+  }
+}
+
+// ---- engine refresh (single-flight) ----
+async function refresh(){
+  const t = ++token;
+  const myTurn = toMove() === me;
+  if(myTurn){ $('big').className='big wait'; $('big').textContent='thinking…'; $('top3').innerHTML=''; }
+  try{
+    const r = await fetch('/api/move?h=' + encodeURIComponent(hist.join(',')) + '&side=' + toMove());
+    const d = await r.json();
+    if(t !== token) return;                 // stale
+    $('stateLine').textContent = 'Moves: ' + hist.length + (hist.length ? '' : ' · you open') ;
+    $('sp').innerHTML = '<span class="rv">red SP: ' + ((d.sp && d.sp.red) ?? '—') + '</span><span class="bv">blue SP: ' + ((d.sp && d.sp.blue) ?? '—') + '</span>' +
+      '<span>walls: ' + (d.walls || []).length + '/20</span>';
+    if(!d.top || !d.top.length){ $('big').className='big wait'; $('big').textContent='no legal moves'; return; }
+    const best = d.top[0][1];
+    if(myTurn){
+      $('big').className = 'big ' + me;
+      $('big').textContent = 'Play: ' + best;
+      $('big').onclick = () => pushMove(best);
+      $('top3').innerHTML='';
+      d.top.slice(0,4).forEach(t2 => {
+        const b=document.createElement('button');
+        b.textContent = t2[1] + (t2[0]<=0?' ✓':'');
+        b.onclick = () => pushMove(t2[1]);
+        $('top3').appendChild(b);
+      });
+    } else {
+      $('big').className='big wait'; $('big').textContent='opponent to move — type his move below';
+      $('big').onclick=null; $('top3').innerHTML='';
+    }
+  }catch(e){ if(t===token){ $('big').className='big wait'; $('big').textContent='ERR '+e; } }
+}
+
+// ---- actions ----
+function pushMove(m){
+  if(!m) return;
+  hist.push(m.toLowerCase());
+  renderBoard(boardState(hist));
+  $('histBox').textContent = hist.join(', ');
+  refresh();
+}
+function setMe(c){ me=c; $('mePill').textContent = me.toUpperCase(); $('mePill').className='pill active '+me; refresh(); }
+
+$('mePill').onclick = () => setMe(me==='red'?'blue':'red');
+setMe('blue');
+$('oppMove').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=$('oppMove').value.trim(); if(v){ $('oppMove').value=''; pushMove(v); } }});
+$('undo').onclick = ()=>{ if(hist.length){ hist.pop(); renderBoard(boardState(hist)); $('histBox').textContent=hist.join(', '); refresh(); }};
+$('reset').onclick = ()=>{ hist=[]; token++; renderBoard(boardState(hist)); $('histBox').textContent=''; $('top3').innerHTML=''; $('sp').innerHTML=''; $('big').className='big wait'; $('big').textContent='…'; refresh(); };
+renderBoard(boardState(hist));
+$('histBox').textContent='';
+refresh();
+</script>
+</body>
+</html>
