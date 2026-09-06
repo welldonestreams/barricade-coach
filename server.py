@@ -199,7 +199,18 @@ class Handler(BaseHTTPRequestHandler):
                         return
                     try:
                         engine = q.get('engine', ['python'])[0]
-                        if engine == 'mcts':
+                        opp_name = q.get('opponent', [''])[0] or None
+                        opp_color = q.get('color', [''])[0].lower()
+                        if opp_color not in ('red', 'blue'):
+                            opp_color = None
+                        # Blend learned memory when a learning module is present;
+                        # otherwise fall back to pure tactical search.
+                        if LEARNING_OK and engine in ('python', 'mcts'):
+                            import advice
+                            result = advice.advise(hist, side, depth, seconds,
+                                                   engine=engine,
+                                                   opp_name=opp_name, opp_color=opp_color)
+                        elif engine == 'mcts':
                             import mcts_coach
                             result = mcts_coach.search(hist, side, seconds)
                         elif engine == 'python':
@@ -225,6 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                     'pawns': {'red': c.LETTERS[g.pawns[c.RED][0]] + str(g.pawns[c.RED][1] + 1),
                               'blue': c.LETTERS[g.pawns[c.BLUE][0]] + str(g.pawns[c.BLUE][1] + 1)},
                     'legal_history': True,
+                    'blend': (result.get('blend') or [])[:5] if result else [],
                 })
             except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e), 'legal_history': False})
@@ -266,11 +278,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 hist = parse_move(q.get('h', [''])[0])
+                color = q.get('color', [''])[0].lower()
+                if color not in ('red', 'blue'):
+                    color = None
                 model = learning.load_opponent(name)
                 if not model:
                     self._send(404, {'error': f'No model for {name} yet - collect their games first', 'name': name})
                     return
-                insight = learning.opponent_insight(name, hist)
+                insight = learning.opponent_insight(name, hist, opp_color=color)
                 stats = learning.outcome_stats(hist)
                 self._send(200, {'name': name, 'model': {
                     'games': model.get('games'), 'wins': model.get('wins'),

@@ -315,12 +315,17 @@ def build_opponent_model(name, game_records):
     model = {
         'name': name,
         'built': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'format': 2,
         'games': 0, 'wins': 0,
         'rating_high': None, 'rating_low': None,
         'openings': {'red': defaultdict(lambda: defaultdict(int)),
                      'blue': defaultdict(lambda: defaultdict(int))},
-        'responses': defaultdict(lambda: defaultdict(int)),
-        'loss_positions': defaultdict(int),
+        # Color-split: the opponent's tendencies differ by which color they
+        # played, so responses/loss_positions are keyed by the opponent's color.
+        'responses': {'red': defaultdict(lambda: defaultdict(int)),
+                      'blue': defaultdict(lambda: defaultdict(int))},
+        'loss_positions': {'red': defaultdict(int), 'blue': defaultdict(int)},
+        'color_games': {'red': 0, 'blue': 0},
         'avg_move_ms': None,
         'move_times': [],
     }
@@ -329,6 +334,7 @@ def build_opponent_model(name, game_records):
         if sides is None:
             continue
         my_side, opp_side = sides
+        color = 'red' if my_side == 0 else 'blue'
         winner_side = _winner_side(game)
         hist = coach.parse_history(game.get('historyCsv', ''))
         try:
@@ -337,12 +343,11 @@ def build_opponent_model(name, game_records):
                 if g.to_move == my_side:
                     pos = ','.join(g.history)
                     if len(g.history) < 6:
-                        color = 'red' if my_side == 0 else 'blue'
                         model['openings'][color][mv][len(g.history)] += 1
                     else:
-                        model['responses'][pos][mv] += 1
+                        model['responses'][color][pos][mv] += 1
                     if winner_side is not None and winner_side != my_side:
-                        model['loss_positions'][pos] += 1
+                        model['loss_positions'][color][pos] += 1
                 try:
                     g.apply(mv)
                 except ValueError:
@@ -350,6 +355,7 @@ def build_opponent_model(name, game_records):
         except ValueError:
             continue
         model['games'] += 1
+        model['color_games'][color] += 1
         if winner_side is not None and winner_side == my_side:
             model['wins'] += 1
         mt = game.get('moveTimes') or []
@@ -363,8 +369,9 @@ def build_opponent_model(name, game_records):
         model['avg_move_ms'] = sum(model['move_times']) / len(model['move_times'])
     model['openings'] = {k: {m: dict(d) for m, d in v.items()}
                          for k, v in model['openings'].items()}
-    model['responses'] = {p: dict(d) for p, d in model['responses'].items()}
-    model['loss_positions'] = dict(model['loss_positions'])
+    model['responses'] = {k: {p: dict(d) for p, d in v.items()}
+                          for k, v in model['responses'].items()}
+    model['loss_positions'] = {k: dict(v) for k, v in model['loss_positions'].items()}
     del model['move_times']
     return model
 
@@ -384,22 +391,69 @@ def load_opponent(name):
     return None
 
 
-def opponent_insight(name, history):
+# Weight given to the opponent's same-color games vs opposite-color games when
+# blending tendencies. Same-color play is more predictive of what they'll do
+# *as this color*, but the other color is not ruled out (players have transferable
+# habits). Weights are deliberately soft; see advice.py for the overall blend.
+OPP_SAME_COLOR_WEIGHT = 0.75
+OPP_OTHER_COLOR_WEIGHT = 0.25
+
+
+def opponent_insight(name, history, opp_color=None):
+    """Tendencies of `name` at the current position, optionally color-weighted.
+
+    opp_color: 'red' or 'blue' = the color the opponent is playing this game.
+    When given, same-color games count 0.75 and opposite-color games 0.25
+    (soft blend, never zeroing out the other color)."""
     model = load_opponent(name)
     if not model:
         return None
     pos = ','.join(history)
-    resp = model['responses'].get(pos)
-    if not resp:
+
+    # Format 1 (legacy): flat dicts {pos: {move: count}}.
+    if model.get('format') != 2:
+        resp = (model.get('responses') or {}).get(pos)
+        if not resp:
+            return {'known': False, 'games': model.get('games', 0),
+                    'wins': model.get('wins', 0)}
+        total = sum(resp.values())
+        top = sorted(resp.items(), key=lambda kv: -kv[1])[:3]
+        lost_here = (model.get('loss_positions') or {}).get(pos, 0)
+        return {'known': True, 'total': total, 'top': top, 'lost_here': lost_here,
+                'games': model.get('games', 0), 'wins': model.get('wins', 0)}
+
+    resp = model.get('responses') or {}
+    losses = model.get('loss_positions') or {}
+    if opp_color in ('red', 'blue'):
+        same = (resp.get(opp_color) or {}).get(pos, {})
+        other_c = 'blue' if opp_color == 'red' else 'red'
+        other = (resp.get(other_c) or {}).get(pos, {})
+        blended = defaultdict(float)
+        for mv, n in same.items():
+            blended[mv] += n * OPP_SAME_COLOR_WEIGHT
+        for mv, n in other.items():
+            blended[mv] += n * OPP_OTHER_COLOR_WEIGHT
+        lost_here = (losses.get(opp_color) or {}).get(pos, 0)
+    else:
+        blended = defaultdict(float)
+        for color in ('red', 'blue'):
+            for mv, n in (resp.get(color) or {}).get(pos, {}).items():
+                blended[mv] += n
+        lost_here = (losses.get('red') or {}).get(pos, 0) + (losses.get('blue') or {}).get(pos, 0)
+    blended = {mv: c for mv, c in blended.items() if c > 0}
+
+    if not blended:
         if len(history) < 6:
             return {'known': False, 'games': model['games'],
-                    'wins': model['wins'], 'note': 'early game'}
-        return {'known': False, 'games': model['games'], 'wins': model['wins']}
-    total = sum(resp.values())
-    top = sorted(resp.items(), key=lambda kv: -kv[1])[:3]
-    lost_here = model['loss_positions'].get(pos, 0)
+                    'wins': model['wins'], 'note': 'early game',
+                    'color_games': model.get('color_games')}
+        return {'known': False, 'games': model['games'], 'wins': model['wins'],
+                'color_games': model.get('color_games')}
+    total = sum(blended.values())
+    top = sorted(blended.items(), key=lambda kv: -kv[1])[:3]
     return {'known': True, 'total': total, 'top': top, 'lost_here': lost_here,
-            'games': model['games'], 'wins': model['wins']}
+            'games': model['games'], 'wins': model['wins'],
+            'color_games': model.get('color_games')}
 
 
 if __name__ == '__main__':

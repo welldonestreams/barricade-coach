@@ -21,32 +21,70 @@ sys.path.insert(0, str(ROOT))
 import learning  # noqa: E402
 
 ARCHIVE = ROOT / 'study' / 'archive'
+TOP_PLAYERS_FILE = ROOT / 'study' / 'top-players.json'
+
+
+def load_top_players():
+    """Read the curated top-player list (usernames). Falls back to empty."""
+    try:
+        import json as _json
+        data = _json.loads(TOP_PLAYERS_FILE.read_text(encoding='utf-8'))
+        names = data.get('players') or []
+        return [n for n in names if isinstance(n, str)]
+    except (OSError, ValueError):
+        return []
 
 
 def sample_seed(rng, min_ply=6, max_ply=40):
-    """Pick a random archived game and a random ply, returning the history up to
-    that ply (the position the engine will solve from). Returns [] on failure."""
+    """Pick a random game position to solve from. Prefers games featuring a
+    top player (their boards are stronger / more diverse than an empty board),
+    falling back to any archived game when no top-player game is long enough.
+    Returns [] on failure."""
     files = list(ARCHIVE.glob('*.json'))
     if not files:
         return []
-    for _ in range(20):  # a few tries to find a long-enough game
-        f = rng.choice(files)
-        try:
-            data = json_load(f)
-        except Exception:
-            continue
-        hist = data.get('historyCsv', '')
-        if not hist:
-            continue
-        try:
-            moves = c.parse_history(hist)
-        except ValueError:
-            continue
-        if len(moves) <= min_ply:
-            continue
-        cut = rng.randint(min_ply, min(max_ply, len(moves) - 1))
-        return moves[:cut]
+    top = set(load_top_players())
+    top_files = []
+    if top:
+        top_files = _filter_top_games(files, top)
+    # Try top-player games first, then any game.
+    pools = [top_files, files] if top_files else [files]
+    for pool in pools:
+        for _ in range(30):
+            f = rng.choice(pool)
+            try:
+                data = json_load(f)
+            except Exception:
+                continue
+            hist = data.get('historyCsv', '')
+            if not hist:
+                continue
+            try:
+                moves = c.parse_history(hist)
+            except ValueError:
+                continue
+            if len(moves) <= min_ply:
+                continue
+            cut = rng.randint(min_ply, min(max_ply, len(moves) - 1))
+            return moves[:cut]
     return []
+
+
+def _filter_top_games(files, top_names):
+    """Return games where at least one player is in `top_names` (cheap header
+    scan; avoids a full parse of every file)."""
+    import json as _json
+    out = []
+    for f in files:
+        try:
+            d = _json.loads(f.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        p1 = d.get('player1Username')
+        p2 = d.get('player2Username')
+        if (p1 in top_names) or (p2 in top_names):
+            out.append(f)
+    return out
 
 
 def json_load(path):
