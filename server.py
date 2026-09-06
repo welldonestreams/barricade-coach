@@ -13,6 +13,11 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import coach as c
+try:
+    import learning
+    LEARNING_OK = True
+except Exception:
+    LEARNING_OK = False
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(ROOT, 'ui', 'index.html')
@@ -43,6 +48,12 @@ def parse_move(h):
     if len(h) > 8000:
         raise ValueError('History too long (maximum 8000 characters)')
     return c.parse_history(h)
+
+def json_or(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # silence
@@ -154,6 +165,64 @@ class Handler(BaseHTTPRequestHandler):
                 })
             except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e), 'legal_history': False})
+            return
+        if u.path == '/api/opponent':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            name = q.get('name', [''])[0]
+            if not name or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in name):
+                self._send(400, {'error': 'Provide ?name=<username>'})
+                return
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                model = learning.load_opponent(name)
+                if not model:
+                    self._send(404, {'error': f'No model for {name} yet - collect their games first', 'name': name})
+                    return
+                insight = learning.opponent_insight(name, hist)
+                stats = learning.outcome_stats(hist)
+                self._send(200, {'name': name, 'model': {
+                    'games': model.get('games'), 'wins': model.get('wins'),
+                    'rating_low': model.get('rating_low'), 'rating_high': model.get('rating_high'),
+                    'avg_move_ms': model.get('avg_move_ms'),
+                }, 'insight': insight, 'outcome_stats': stats})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/memory':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                self._send(200, {'positions': len(learning.load_outcomes().get('positions', {})),
+                                 'games': learning.load_outcomes().get('games', 0),
+                                 'stats': learning.outcome_stats(hist)})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/record':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            try:
+                h = q.get('h', [''])[0]
+                winner = q.get('winner', [''])[0] or None
+                red = q.get('red', [''])[0] or None
+                blue = q.get('blue', [''])[0] or None
+                opp = q.get('opponent', [''])[0] or None
+                sharecode = q.get('share', [''])[0] or None
+                # map opponent name to red/blue side based on parity of plies? caller
+                # supplies red/blue directly; opponent is whichever side is not 'me'
+                saved = learning.record_game(h, winner, red_name=red, blue_name=blue,
+                                             sharecode=sharecode)
+                self._send(200, {'recorded': saved, 'winner': winner, 'opponent': opp})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
             return
         if u.path == '/' or u.path == '/index.html':
             with open(UI, 'rb') as f:

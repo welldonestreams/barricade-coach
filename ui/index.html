@@ -83,6 +83,14 @@
     <div class="row"><input id="historyInput" type="text" aria-label="Full move history" placeholder="Paste history: e2,e8,e3,e7  — or a barricade.gg share: 1.e2e8 2.e3e7 …"><button id="loadHistory">Load</button></div>
     <div class="row"><label for="searchMode">Thinking time</label><select id="searchMode"><option value="2,5">Quick · up to 5 seconds</option><option value="4,15">Study · up to 15 seconds</option></select></div>
     <div class="row"><label for="engine">Coach engine</label><select id="engine"><option value="python">Tactical search</option><option value="mcts">Monte Carlo · experimental</option></select></div>
+    <div class="row"><label for="youName" title="Your barricade.gg username">you</label><input id="youName" type="text" placeholder="steak2222" autocomplete="off" style="flex:2"></div>
+    <div class="row"><label for="oppName" title="Opponent's barricade.gg username, for tendency scouting">vs</label><input id="oppName" type="text" placeholder="opponent username (optional)" autocomplete="off" style="flex:2"></div>
+    <div class="meta" id="oppInsight"></div>
+    <div class="meta" id="memLine"></div>
+    <div class="row" id="recordRow" style="display:none">
+      <button id="recordWin" class="pill red" style="flex:1">I won</button>
+      <button id="recordLoss" class="pill blue" style="flex:1">I lost</button>
+    </div>
     <div class="meta" id="error" role="alert"></div>
     <div class="sp" id="sp"></div>
     <div class="meta" id="stateLine"></div>
@@ -95,6 +103,8 @@
 const $ = id => document.getElementById(id);
 let hist = [];
 let me = 'red';
+let youName = 'steak2222';
+let oppName = '';
 let token = 0;
 let wallTool = null;          // null | 'h' | 'v'
 let selectedPawn = null;      // square of mover pawn currently selected
@@ -203,7 +213,7 @@ function clearAdvice(message){
   $('big').textContent=message; $('top3').replaceChildren();
 }
 function save(){
-  try { localStorage.setItem('barricade-coach',JSON.stringify({hist,me})); } catch {}
+  try { localStorage.setItem('barricade-coach',JSON.stringify({hist,me,youName,oppName})); } catch {}
 }
 function setBoardHint(msg){ $('boardHint').textContent=msg||''; }
 function showState(d){
@@ -220,6 +230,8 @@ function showState(d){
   if(winner) setBoardHint('Game over — '+winner+' won');
   else setBoardHint(clickHint());
   syncTools();
+  $('recordRow').style.display = hist.length>=2 ? 'flex' : 'none';
+  fetchOpponent(); fetchMemory();
 }
 function clickHint(){
   const side=toMove(), mineSide=side===me;
@@ -295,6 +307,43 @@ async function fetchLegal(){
     legal=d; syncTools();
   } catch(e){ /* non-fatal: click-to-move unavailable */ }
 }
+async function fetchOpponent(){
+  const name=oppName.trim();
+  if(!name){ $('oppInsight').textContent=''; return; }
+  try{
+    const d=await request('/api/opponent',hist,'&name='+encodeURIComponent(name));
+    if(d.error){ $('oppInsight').textContent='vs '+name+' — no model yet (collect their games first)'; return; }
+    const m=d.model||{}, ins=d.insight||{};
+    let txt='vs '+name;
+    if(m.rating_high!=null) txt+=' · '+m.rating_low+'-'+m.rating_high+' elo · '+m.games+' games · '+m.wins+' wins';
+    if(ins.known && ins.top && ins.top.length)
+      txt+=' · here plays: '+ins.top.map(t=>t[0]+' ('+t[1]+'/'+ins.total+')').join(', ')+(ins.lost_here?' · lost here '+ins.lost_here+'×':'');
+    else txt+=' · no tendency data at this position yet';
+    $('oppInsight').textContent=txt;
+  }catch(e){ $('oppInsight').textContent='vs '+name+' — look up failed'; }
+}
+async function fetchMemory(){
+  try{
+    const d=await request('/api/memory',hist);
+    const st=d.stats||{};
+    const keys=Object.keys(st);
+    if(!keys.length){ $('memLine').textContent=''; return; }
+    $('memLine').textContent='from memory: '+keys.slice(0,6).map(m=>m+' won '+st[m].won+'/lost '+st[m].lost).join(', ');
+  }catch(e){ $('memLine').textContent=''; }
+}
+async function recordGame(iWon){
+  if(!hist.length) return;
+  const side=me, oppSide=me==='red'?'blue':'red';
+  const winner=iWon?side:oppSide;
+  const red=side==='red'?youName:(oppName||''), blue=side==='blue'?youName:(oppName||'');
+  const q='&winner='+winner+'&red='+encodeURIComponent(red)+'&blue='+encodeURIComponent(blue)+'&opponent='+encodeURIComponent(oppName||'');
+  try{
+    const d=await request('/api/record',hist,q);
+    $('recordRow').style.display='none';
+    $('error').textContent=''; fetchMemory();
+  }catch(e){ $('error').textContent=e.message; }
+}
+
 async function pushMove(m){
   if(!m || winner) return;
   selectedPawn=null; wallTool=null; syncTools();
@@ -338,6 +387,10 @@ $('loadHistory').onclick=()=>{
 $('historyInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('loadHistory').click(); });
 $('searchMode').onchange=()=>{ if(!validating) refresh(); };
 $('engine').onchange=()=>{ if(!validating) refresh(); };
+$('youName').onchange=()=>{ youName=$('youName').value.trim()||'steak2222'; save(); };
+$('oppName').onchange=()=>{ oppName=$('oppName').value.trim(); save(); fetchOpponent(); };
+$('recordWin').onclick=()=>recordGame(true);
+$('recordLoss').onclick=()=>recordGame(false);
 
 // ---- click-to-move / click-to-wall ----
 const board=$('board');
@@ -406,6 +459,9 @@ async function init(){
   let saved;
   try { saved=JSON.parse(localStorage.getItem('barricade-coach')); } catch {}
   if(saved && ['red','blue'].includes(saved.me)) me=saved.me;
+  if(saved && typeof saved.youName==='string') youName=saved.youName;
+  if(saved && typeof saved.oppName==='string') oppName=saved.oppName;
+  $('youName').value=youName; $('oppName').value=oppName;
   renderColor();
   renderBoard(boardState([]));
   if(saved && Array.isArray(saved.hist)) await acceptHistory(saved.hist);

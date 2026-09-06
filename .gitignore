@@ -6,3 +6,6 @@ study/*-analysis.json
 study/*.html
 study/profiles/
 study/archive/
+memory/
+*.log
+study/collection-summary.json
