@@ -11,6 +11,13 @@ from pathlib import Path
 import coach as c
 import learning
 
+# Tactical cross-check: MCTS rollouts are weak in sharp wall-rich positions --
+# they converge on pawn moves and miss precise defensive walls. A fast full-width
+# minimax (same legal-move model) catches those. We only override when minimax
+# sees a move decisively better than MCTS's top pick, and only when walls are on
+# the board (MCTS is fine in the open opening/middlegame).
+TACTICAL_GAP_CP = 80.0
+
 
 @lru_cache(maxsize=1)
 def _approved(path, modified):
@@ -50,6 +57,8 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     else:
         raise ValueError('Engine must be python or mcts')
     result['engine']=engine
+    if engine=='mcts' and game.walls and result.get('scored') and not result.get('fallback'):
+        result=_tactical_crosscheck(hist, side, result, seconds)
     tactical=list(result.get('scored') or [])
     result.update(tactical=tactical,blend=[],learning_policy='validated exact ties only')
     if not tactical or result.get('fallback') or (engine=='python' and result.get('depth',0)<2):
@@ -87,3 +96,34 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         result['principal_variation']=[result['scored'][0][1]]
     result['elapsed']=time.monotonic()-started
     return result
+
+
+def _tactical_crosscheck(hist, side, mcts_result, seconds):
+    """Override MCTS only when a fast minimax sees a decisively better move.
+
+    Walls present and a non-fallback MCTS result are the preconditions (checked
+    by the caller). A depth-2 minimax completes in ~1.5s and reliably finds the
+    precise defensive walls that MCTS rollouts miss. The gap threshold is large
+    enough that we never second-guess MCTS on a close call.
+    """
+    budget = min(1.5, max(0.2, seconds * 0.35))
+    mm = c.search(hist, side, depth=2, time_limit=budget)
+    if not mm.get('scored') or mm.get('depth', 0) < 2:
+        return mcts_result
+    mm_best = mm['scored'][0]
+    mcts_top = mcts_result['scored'][0][1]
+    if mm_best[1] == mcts_top:
+        return mcts_result
+    mm_scores = {m: s for s, m in mm['scored']}
+    mcts_top_mm = mm_scores.get(mcts_top)
+    if mcts_top_mm is None:
+        return mcts_result
+    gap = mcts_top_mm - mm_best[0]
+    if gap < TACTICAL_GAP_CP:
+        return mcts_result
+    mcts_result['tactical_override'] = dict(
+        mcts_top=mcts_top, minimax_best=mm_best[1], gap=round(gap, 1))
+    mcts_result['scored'] = [mm_best] + [(s, m) for s, m in mcts_result['scored'] if m != mm_best[1]]
+    mcts_result['principal_variation'] = [mm_best[1]]
+    mcts_result['crosscheck'] = 'minimax depth 2 saw a decisively better move'
+    return mcts_result

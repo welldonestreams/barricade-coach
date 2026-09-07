@@ -59,6 +59,9 @@ def explain(g, result):
         text+=' Rollout outcomes are estimates, not a measured win rate against players.'
         if result.get('timed_out'):
             text+=' Time limit reached; using completed simulation batches.'
+        ov=result.get('tactical_override')
+        if ov:
+            text+=f" Cross-check found a better move: MCTS favored {ov['mcts_top']}, but an exact wall search prefers {ov['minimax_best']} by {ov['gap']:g}."
         return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
