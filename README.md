@@ -183,6 +183,10 @@ learns both a legal-move policy and an outcome value into an isolated candidate.
 The value and policy guide MCTS root exploration; legality and tactical checks
 still control the final response.
 
+Teacher generation uses multiple CPU workers and resumes an interrupted JSONL
+target without duplicating positions. Resume a stopped run with
+`python improve.py --run-dir memory/runs/<run-id> --teacher-workers 8`.
+
 `arena.py` plays a candidate against unguided MCTS and optional frozen models from
 the same held-out starts with colors exchanged. It records outcomes, illegal moves,
 latency, model/code hashes, and a paired confidence bound. `--promote` writes the

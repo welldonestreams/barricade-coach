@@ -6,6 +6,8 @@ import json
 import math
 import random
 import time
+import os
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import coach as c
@@ -47,7 +49,15 @@ def record(path,rng,min_ply,max_ply,depth,seconds):
                 players=players,player_holdout=any(heldout_player(name) for name in players),
                 teacher=dict(engine='full-width-minimax',depth=result['depth'],
                              nodes=result['nodes'],tt_hits=result.get('tt_hits',0),
-                             seconds=result['elapsed']),policy=policy)
+                             seconds=result['elapsed'],
+                             coach_sha256=hashlib.sha256(Path(c.__file__).read_bytes()).hexdigest()),
+                policy=policy)
+
+
+def record_task(task):
+    path,seed,min_ply,max_ply,depth,seconds=task
+    try:return record(Path(path),random.Random(seed),min_ply,max_ply,depth,seconds)
+    except (OSError,ValueError,TypeError,KeyError):return None
 
 
 def main():
@@ -56,23 +66,38 @@ def main():
     ap.add_argument('--depth',type=int,default=3)
     ap.add_argument('--seconds',type=float,default=8)
     ap.add_argument('--seed',type=int,default=20260907)
+    ap.add_argument('--workers',type=int,default=max(1,min(8,(os.cpu_count() or 2)-2)))
     ap.add_argument('--min-ply',type=int,default=8);ap.add_argument('--max-ply',type=int,default=70)
     ap.add_argument('--output',default='memory/teacher/targets.jsonl')
     args=ap.parse_args()
-    if args.positions<1 or not 1<=args.depth<=8 or not 0<args.seconds<=60:ap.error('Invalid limits')
+    if args.positions<1 or not 1<=args.depth<=8 or not 0<args.seconds<=60 or not 1<=args.workers<=16:ap.error('Invalid limits')
     files=list((ROOT/'study/archive').glob('*.json'))+list((ROOT/'study/additional').glob('*.json'))
     if not files:ap.error('No validated game files')
     rng=random.Random(args.seed);rng.shuffle(files);out=ROOT/args.output;out.parent.mkdir(parents=True,exist_ok=True)
-    made=0;started=time.monotonic()
+    existing=set()
+    if out.exists():
+        with out.open(encoding='utf-8') as src:
+            for line in src:
+                try:
+                    row=json.loads(line);existing.add((row['game_hash'],len(row['history'])))
+                except (json.JSONDecodeError,KeyError,TypeError):pass
+    made=len(existing);started=time.monotonic()
+    if made>=args.positions:
+        print(json.dumps(dict(targets=made,elapsed=0.0,workers=args.workers,
+                              resumed=True,output=str(out))),flush=True)
+        return
+    tasks=[(str(path),args.seed+i*104729,args.min_ply,args.max_ply,args.depth,args.seconds)
+           for i,path in enumerate(files)]
     with out.open('a',encoding='utf-8') as target:
-        for path in files:
+      with ProcessPoolExecutor(max_workers=args.workers) as pool:
+        for row in pool.map(record_task,tasks,chunksize=1):
             if made>=args.positions:break
-            try:row=record(path,rng,args.min_ply,args.max_ply,args.depth,args.seconds)
-            except (OSError,ValueError,TypeError,KeyError):continue
-            if row:
+            if row and (row['game_hash'],len(row['history'])) not in existing:
+                existing.add((row['game_hash'],len(row['history'])))
                 target.write(json.dumps(row,separators=(',',':'))+'\n');target.flush();made+=1
                 if made%25==0:print(f'{made}/{args.positions} completed targets',flush=True)
-    print(json.dumps(dict(targets=made,elapsed=round(time.monotonic()-started,2),output=str(out))),flush=True)
+    print(json.dumps(dict(targets=made,elapsed=round(time.monotonic()-started,2),
+                          workers=args.workers,resumed=bool(existing),output=str(out))),flush=True)
 
 
 if __name__=='__main__':main()

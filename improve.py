@@ -19,15 +19,19 @@ def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--rounds',type=int,default=1);ap.add_argument('--positions',type=int,default=2000)
     ap.add_argument('--teacher-depth',type=int,default=3);ap.add_argument('--teacher-seconds',type=float,default=8)
+    ap.add_argument('--teacher-workers',type=int,default=8)
     ap.add_argument('--arena-pairs',type=int,default=100);ap.add_argument('--arena-seconds',type=float,default=1)
     ap.add_argument('--league-games',type=int,default=200);ap.add_argument('--league-seconds',type=float,default=.5)
-    args=ap.parse_args();run_dir=ROOT/'memory'/'runs'/str(time.time_ns());run_dir.mkdir(parents=True)
+    ap.add_argument('--run-dir',help='resume an existing run directory')
+    args=ap.parse_args();run_dir=(Path(args.run_dir).resolve() if args.run_dir else ROOT/'memory'/'runs'/str(time.time_ns()))
+    run_dir.mkdir(parents=True,exist_ok=True)
     targets=run_dir/'teacher.jsonl'
     run(['teacher_data.py','--positions',args.positions,'--depth',args.teacher_depth,
-         '--seconds',args.teacher_seconds,'--output',targets.relative_to(ROOT)])
+         '--seconds',args.teacher_seconds,'--workers',args.teacher_workers,
+         '--output',targets.relative_to(ROOT)])
     inputs=[targets];promoted=[]
     for round_no in range(1,args.rounds+1):
-        candidate=run_dir/f'round-{round_no}'/'model.json';candidate.parent.mkdir()
+        candidate=run_dir/f'round-{round_no}'/'model.json';candidate.parent.mkdir(exist_ok=True)
         command=['train_policy.py',*inputs,'--output',candidate]
         if round_no>1:command.append('--warm-start')
         run(command)

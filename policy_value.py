@@ -51,11 +51,16 @@ def state_features(g, side=None):
     my_route=g.race_distance(side);op_route=g.race_distance(1-side)
     delta=max(-12,min(12,my_route-op_route))
     stage=min(4,len(g.walls)//5)
+    my_res=c.path_resilience(frozenset(g.walls),mine,c.GOALS[side])
+    op_res=c.path_resilience(frozenset(g.walls),opp,c.GOALS[1-side])
     out=['bias',f'my_sq:{c.LETTERS[mine[0]]}{my_rank}',
          f'op_sq:{c.LETTERS[opp[0]]}{op_rank}',f'my_file:{mine[0]}',
          f'op_file:{opp[0]}',f'file_gap:{abs(mine[0]-opp[0])}',
          f'rank_gap:{abs(my_rank-op_rank)}',f'my_left:{g.remaining[side]}',
-         f'op_left:{g.remaining[1-side]}',f'stage:{stage}',f'route_delta:{delta}']
+         f'op_left:{g.remaining[1-side]}',f'stage:{stage}',f'route_delta:{delta}',
+         f'my_resilience:{my_res}',f'op_resilience:{op_res}',
+         f'my_route_options:{g.route_options(side)}',
+         f'op_route_options:{g.route_options(1-side)}']
     for wall in sorted(g.walls):
         out.append('wall:'+normalize_move(wall,side))
     return out
@@ -71,6 +76,10 @@ def action_features(g, move, side=None):
     after_me=child.race_distance(side);after_op=child.race_distance(1-side)
     out.extend((f'my_route_change:{max(-4,min(4,after_me-before_me))}',
                 f'op_route_change:{max(-4,min(4,after_op-before_op))}'))
+    if len(move)==3:
+        net=(after_op-before_op)-(after_me-before_me)
+        out.extend((f'wall_net:{max(-4,min(4,net))}',
+                    'wall_changes_route' if net else 'wall_no_immediate_gain'))
     if child.winner==side: out.append('wins_now')
     return out
 

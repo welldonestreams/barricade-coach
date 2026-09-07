@@ -30,6 +30,9 @@ WIN = 100000
 # the distinct-route count here (more than this is just "safe").
 RESILIENCE_CAP = 3
 FRAGILITY_CP = 18.0   # centipawn penalty per fragility unit (when the other side can still wall)
+ROUTE_OPTION_CP = 12.0
+WALL_RESERVE_CP = 24.0
+LATE_WALL_RESERVE_CP = 12.0
 
 
 def parse_history(value):
@@ -171,46 +174,34 @@ def _shortest(ws, start, goal_row, blockers=()):
 
 @lru_cache(maxsize=8192)
 def path_resilience(ws, start, goal_row, cap=RESILIENCE_CAP):
-    """Number of distinct files on a shortest path from `start` to the goal row.
+    """Number of files used by a path within two steps of shortest, capped.
 
-    Uses a 0-1 BFS in which vertical moves cost 1 and horizontal moves cost 0:
-    the "distance" is then the number of rows still to climb, and the number of
-    distinct files that lie on some shortest route measures how wide the
-    corridor is. An open board gives the full 9 files (capped at RESILIENCE_CAP
-    => "safe"); a pawn pinned in one file by walls gives 1 ("fragile"). Returns 0
-    if the goal is unreachable."""
+    A two-step allowance recognizes useful nearby escape lanes on an open board
+    while excluding distant horizontal detours. This measures practical route
+    breadth before the raw shortest distance worsens.
+    """
     adj = graph(frozenset(ws))
-    n = 81
-    def bfs01(sources):
-        dist = [99]*n
+    def bfs(sources):
+        dist = [99]*81
         dq = deque()
         for s in sources:
             dist[s] = 0
             dq.append(s)
         while dq:
             i = dq.popleft()
-            row_i = i // 9
-            di = dist[i]
             for j in adj[i]:
-                w = 0 if j // 9 == row_i else 1
-                nd = di + w
-                if nd < dist[j]:
-                    dist[j] = nd
-                    if w == 0:
-                        dq.appendleft(j)
-                    else:
-                        dq.append(j)
+                if dist[j] == 99:
+                    dist[j] = dist[i] + 1
+                    dq.append(j)
         return dist
-    to_goal = bfs01(list(range(goal_row*9, goal_row*9+9)))
+    to_goal = distances(frozenset(ws), goal_row)
     s0 = start[1]*9 + start[0]
     if to_goal[s0] == 99:
         return 0
-    from_start = bfs01([s0])
+    from_start = bfs([s0])
     d0 = to_goal[s0]
-    files = set()
-    for c in range(n):
-        if to_goal[c] != 99 and from_start[c] + to_goal[c] == d0:
-            files.add(c % 9)
+    files = {cell % 9 for cell in range(81)
+             if to_goal[cell] != 99 and from_start[cell] + to_goal[cell] <= d0+2}
     return min(len(files), cap)
 
 # --- game state -----------------------------------------------------------
@@ -378,18 +369,36 @@ class Game:
         theirs = self.race_distance(1-side)
         if mine is None: mine = 99
         if theirs is None: theirs = 99
-        score = 100 * (mine - theirs) + 8 * (self.remaining[1-side] - self.remaining[side])
+        reserve_cp=WALL_RESERVE_CP if sum(self.remaining.values())>=10 else LATE_WALL_RESERVE_CP
+        score = 100 * (mine - theirs) + reserve_cp * (self.remaining[1-side] - self.remaining[side])
         if self.remaining[1-side] > 0:
             my_res = path_resilience(frozenset(self.walls), self.pawns[side], GOALS[side])
             score += FRAGILITY_CP * (RESILIENCE_CAP - my_res)
+            my_options = self.route_options(side)
+            score += ROUTE_OPTION_CP * (RESILIENCE_CAP - my_options)
         if self.remaining[side] > 0:
             their_res = path_resilience(frozenset(self.walls), self.pawns[1-side], GOALS[1-side])
             score -= FRAGILITY_CP * (RESILIENCE_CAP - their_res)
+            their_options = self.route_options(1-side)
+            score -= ROUTE_OPTION_CP * (RESILIENCE_CAP - their_options)
         return score + (-50 if self.to_move == side else 50)
 
     def race_distance(self, side):
         """One legal pawn turn then wall-only distance: local jump heuristic."""
         return min((1 + shortest(self.walls, p, GOALS[side]) for _, p in self.pawn_moves(side)), default=99)
+
+    def route_options(self, side, cap=RESILIENCE_CAP):
+        """Count legal pawn continuations within two steps of best, capped.
+
+        This catches a pawn entering a one-exit corridor before the raw shortest
+        path becomes worse. The term is active only while the opponent can
+        still place walls.
+        """
+        moves=self.pawn_moves(side)
+        if not moves:return 0
+        lengths=[1+shortest(self.walls,p,GOALS[side]) for _,p in moves]
+        best=min(lengths)
+        return min(cap,sum(length<=best+2 for length in lengths))
 
 # --- coaching search ------------------------------------------------------
 class SearchTimeout(Exception):

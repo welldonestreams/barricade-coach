@@ -14,6 +14,17 @@ import measure_real_games
 
 
 class PolicyValueTests(unittest.TestCase):
+    def test_route_flexibility_and_wall_quality_are_model_features(self):
+        g=c.Game()
+        self.assertEqual(c.path_resilience(frozenset(),g.pawns[c.RED],c.GOALS[c.RED]),3)
+        self.assertEqual(g.route_options(c.RED),3)
+        state=pv.state_features(g)
+        self.assertIn('my_resilience:3',state)
+        self.assertIn('my_route_options:3',state)
+        advanced=c.Game('e2,e8,e3,e7,e4,e6')
+        self.assertIn('wall_no_immediate_gain',pv.action_features(advanced,'ha4'))
+        self.assertIn('wall_net:1',pv.action_features(advanced,'hd3'))
+
     def test_teacher_search_reports_transposition_reuse_metric(self):
         data=json.loads((Path(__file__).with_name('study')/'additional'/'1ttbdt.json').read_text())
         history=c.parse_history(data['historyCsv'])[:53]
