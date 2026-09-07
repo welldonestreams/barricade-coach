@@ -64,6 +64,13 @@ def _init(con):
         PRIMARY KEY(position, move))''')
     con.execute('''CREATE TABLE IF NOT EXISTS prior_seen(
         key TEXT PRIMARY KEY)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS reasons(
+        position TEXT NOT NULL, move TEXT NOT NULL,
+        games INTEGER NOT NULL DEFAULT 0, sum_delta REAL NOT NULL DEFAULT 0,
+        won INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(position, move))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS reasons_seen(
+        key TEXT PRIMARY KEY)''')
 
 
 def _stable_key(history_csv):
@@ -195,6 +202,106 @@ def prior_stats():
     return {'positions': positions, 'moves': moves}
 
 
+def learned_reasons(history):
+    """Board-state-keyed eval-swing signal for the CURRENT position.
+
+    For each move ever played from this exact board state, returns {move:
+    {games, avg_delta, won, lost, winrate}} where avg_delta is the average
+    heuristic swing the move produced for its mover (eval_before - eval_after;
+    positive = the move improved the mover's position, negative = it hurt).
+    This is the 'why' a move is good or bad, independent of who won the game:
+    a strong move in a lost game still shows a positive avg_delta."""
+    g = coach.Game(history)
+    state = position_key(g)
+    con = _db()
+    _init(con)
+    try:
+        rows = con.execute('SELECT move, games, sum_delta, won, lost FROM reasons WHERE position=?', (state,)).fetchall()
+    finally:
+        con.close()
+    out = {}
+    for mv, games, sum_delta, won, lost in rows:
+        if games:
+            out[mv] = {'games': games, 'avg_delta': sum_delta / games,
+                       'won': won, 'lost': lost, 'winrate': won / games}
+    return out
+
+
+def build_reasons_from_archive(src=None, max_games=None):
+    """Replay archive games into the board-state 'reasons' (why) table.
+
+    For every ply, records the mover's eval swing (before - after) against the
+    board state, tagged by the eventual result. Idempotent via reasons_seen.
+    Returns the number of games newly incorporated."""
+    if src is None:
+        src = ROOT / 'study' / 'archive'
+    src = Path(src)
+    con = _db()
+    _init(con)
+    imported = 0
+    try:
+        for path in sorted(src.glob('*.json')):
+            try:
+                rec = json.loads(path.read_text(encoding='utf-8-sig'))
+            except (ValueError, OSError):
+                continue
+            try:
+                game = coach.Game(coach.parse_history(rec.get('historyCsv', '')))
+            except ValueError:
+                continue
+            hist = game.history
+            if not hist:
+                continue
+            winner = rec.get('winner')
+            winner_side = {'1': coach.RED, '2': coach.BLUE}.get(str(winner))
+            key = ','.join(hist)
+            if con.execute('SELECT 1 FROM reasons_seen WHERE key=?', (key,)).fetchone():
+                continue
+            con.execute('INSERT INTO reasons_seen(key) VALUES(?)', (key,))
+            g = coach.Game()
+            for mv in hist:
+                mover = g.to_move
+                state = position_key(g)
+                if winner_side is None:
+                    g.apply(mv)
+                    continue
+                before = g.eval_side(mover)
+                g.apply(mv)
+                after = g.eval_side(mover)
+                delta = before - after
+                won = 1 if mover == winner_side else 0
+                lost = 0 if mover == winner_side else 1
+                con.execute("""INSERT INTO reasons(position,move,games,sum_delta,won,lost)
+                               VALUES(?,?,1,?,?,?)
+                               ON CONFLICT(position,move) DO UPDATE SET
+                                 games=games+1, sum_delta=sum_delta+excluded.sum_delta,
+                                 won=won+excluded.won, lost=lost+excluded.lost""",
+                            (state, mv, delta, won, lost))
+            imported += 1
+            if max_games and imported >= max_games:
+                break
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+    return imported
+
+
+def explain_why(history, move):
+    """Concrete 'why' for one move: what the archive says it did, and how often.
+
+    Returns a short human string, e.g. 'historically +12 position swing, won
+    61% (N=18)' -- or None if the position/move is unseen."""
+    reasons = learned_reasons(history)
+    cell = reasons.get(move)
+    if not cell:
+        return None
+    n = cell['games']
+    return f"historically {cell['avg_delta']:+.0f} position swing, won {cell['winrate']*100:.0f}% (N={n})"
+
+
 def build_prior_from_archive(src=None, max_games=None):
     """Replay archive games into the board-state prior.
 
@@ -277,6 +384,7 @@ def record_evals(history_csv, winner, seed_len=0):
                     break
                 continue
             pos = ','.join(g.history)
+            state = position_key(g)
             mover = g.to_move
             before = g.eval_side(mover)
             g.apply(mv)
@@ -290,6 +398,12 @@ def record_evals(history_csv, winner, seed_len=0):
                              games=games+1, sum_delta=sum_delta+excluded.sum_delta,
                              won=won+excluded.won, lost=lost+excluded.lost''',
                         (pos, mv, delta, won, lost))
+            con.execute('''INSERT INTO reasons(position,move,games,sum_delta,won,lost)
+                           VALUES(?,?,1,?,?,?)
+                           ON CONFLICT(position,move) DO UPDATE SET
+                             games=games+1, sum_delta=sum_delta+excluded.sum_delta,
+                             won=won+excluded.won, lost=lost+excluded.lost''',
+                        (state, mv, delta, won, lost))
         con.commit()
         return True
     except Exception:

@@ -16,6 +16,12 @@ LEARN_CP = 30.0
 LEARN_CONF_K = 15.0
 LEARN_MIN_SAMPLES = 3
 
+# The "why" (position-swing) signal. REASON_CP bounds its influence; a move's
+# avg_delta is already in ~centipawns, so this scales it down conservatively.
+REASON_CP = 0.5
+REASON_CONF_K = 15.0
+REASON_MIN_SAMPLES = 3
+
 
 def advise(history, side=None, depth=2, seconds=5.0, engine='python',
            opp_name=None, opp_color=None, rollouts=60000, seed=None):
@@ -51,6 +57,7 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     # dominates, and the prior only separates candidates whose tactical scores
     # are close. Confidence scales with sample count (Laplace-smoothed).
     prior = learning.learned_prior(hist)
+    reasons = learning.learned_reasons(hist)
     # Normalize the tactical signal onto a shared ~centipawn-ish scale so the
     # learned prior can flip a genuine near-tie but never a confident gap.
     #   minimax: score IS centipawns.
@@ -94,10 +101,22 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
             smoothed = (cell['won'] + 1) / (n + 2)
             conf = n / (n + LEARN_CONF_K)
             learned = -LEARN_CP * conf * (smoothed - 0.5) * 2.0
-        rows.append(dict(learned=learned, move=move, tactical=score, own_exp=0, opponent=0,
-                         strength=tactical_strength[move], final=tactical_strength[move] + learned,
+        # The "why" signal: average position swing the move produced for its
+        # mover, independent of who won. A move that reliably improves the
+        # position (positive avg_delta) is good even if the raw winrate is
+        # noisy from few samples. Negative avg_delta = the move hurt -> avoid.
+        why = reasons.get(move)
+        learned_why = 0.0
+        if why and why.get('games', 0) >= REASON_MIN_SAMPLES:
+            n = why['games']
+            conf = n / (n + REASON_CONF_K)
+            learned_why = -REASON_CP * conf * why['avg_delta']
+        rows.append(dict(learned=learned, learned_why=learned_why, move=move, tactical=score,
+                         own_exp=0, opponent=0, strength=tactical_strength[move],
+                         final=tactical_strength[move] + learned + learned_why,
                          preference=preference, evidence=evidence,
-                         samples=cell.get('total', 0) if cell else 0))
+                         samples=cell.get('total', 0) if cell else 0,
+                         why=why.get('games', 0) if why else 0))
     rows.sort(key=lambda r: (r['final'], len(r['move']), r['move']))
     result['scored'] = [(r['final'], r['move']) for r in rows]
     result['blend'] = rows

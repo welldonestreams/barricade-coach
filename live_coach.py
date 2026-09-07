@@ -4,6 +4,7 @@ import json
 import time
 import coach as c
 import advice
+import learning
 
 
 def position(g):
@@ -32,6 +33,9 @@ def explain(g, result):
             text+=f' {sims} simulated games searched end-to-end.'
         else:
             text+=' Monte Carlo search; too few simulations to be confident.'
+        why_hist = learning.explain_why(g.history, move)
+        if why_hist:
+            text += f' {why_hist}.'
         return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
