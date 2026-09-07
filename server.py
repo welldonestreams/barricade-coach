@@ -24,6 +24,8 @@ except Exception:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(ROOT, 'ui', 'index.html')
 SEARCH_LOCK = threading.BoundedSemaphore(1)
+OPPONENT_JOBS = set()
+OPPONENT_LOCK = threading.Lock()
 
 class LocalServer(ThreadingHTTPServer):
     # Windows SO_REUSEADDR can let two processes serve the same loopback port.
@@ -143,7 +145,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         u = urlparse(self.path)
         if u.path == '/api/health':
-            self._send(200, {'service': 'barricade-coach', 'protocol': 2})
+            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 3})
+            return
+        if u.path == '/overlay-fixture':
+            with open(os.path.join(ROOT, 'overlay', 'fixture.html'), 'rb') as f:
+                self._send(200, f.read(), 'text/html; charset=utf-8')
+            return
+        if u.path == '/barricade-live-coach.user.js':
+            with open(os.path.join(ROOT, 'overlay', 'barricade-live-coach.user.js'), 'rb') as f:
+                self._send(200, f.read(), 'text/javascript; charset=utf-8')
+            return
+        if u.path == '/api/live':
+            if not SEARCH_LOCK.acquire(blocking=False):
+                self._send(429, {'error': 'Coach busy; retry shortly'})
+                return
+            try:
+                import live_coach
+                result = live_coach.query({k:v[0] for k,v in parse_qs(u.query, keep_blank_values=True).items()})
+                self._send(200, result)
+            except (ValueError, TypeError) as exc:
+                self._send(400, {'error': str(exc)})
+            finally:
+                SEARCH_LOCK.release()
             return
         if u.path == '/api/legal':
             q = parse_qs(u.query)
@@ -250,22 +273,21 @@ class Handler(BaseHTTPRequestHandler):
             if not name or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in name):
                 self._send(400, {'error': 'Provide ?name=<username>'})
                 return
-            # Collect + build synchronously (jittered, rate-limit aware). A fresh
-            # player with a few hundred games takes minutes; cached returns fast.
-            try:
-                model = learning.load_opponent(name)
-                if model:
-                    self._send(200, {'name': name, 'status': 'ready', 'games': model.get('games'),
-                                     'wins': model.get('wins')})
-                    return
-                model = fetch_opponent_model(name)
-                if not model:
-                    self._send(404, {'error': f'No games found for {name}', 'name': name})
-                    return
-                self._send(200, {'name': name, 'status': 'built', 'games': model.get('games'),
-                                 'wins': model.get('wins')})
-            except Exception as e:
-                self._send(400, {'error': str(e)})
+            model = learning.load_opponent(name)
+            if model and model.get('format') == 3:
+                self._send(200, {'name': name, 'status': 'ready', 'games': model.get('games')})
+                return
+            with OPPONENT_LOCK:
+                if name not in OPPONENT_JOBS:
+                    OPPONENT_JOBS.add(name)
+                    def build(name=name):
+                        try:
+                            fetch_opponent_model(name, max_fresh=10)
+                        finally:
+                            with OPPONENT_LOCK:
+                                OPPONENT_JOBS.discard(name)
+                    threading.Thread(target=build, daemon=True).start()
+            self._send(202, {'name': name, 'status': 'building'})
             return
         if u.path == '/api/opponent':
             q = parse_qs(u.query)
@@ -354,6 +376,48 @@ class Handler(BaseHTTPRequestHandler):
                 blunders.sort(key=lambda r: -r['delta'])
                 self._send(200, {'side': side_s, 'plies_graded': len(rows),
                                  'blunders': blunders[:3], 'all': rows})
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/move-position':
+            # Live-overlay path: search from an explicit board position so a
+            # wrong/partial move history can never desync the coach.
+            q = parse_qs(u.query)
+            try:
+                red_sq = q.get('red', [''])[0].lower()
+                blue_sq = q.get('blue', [''])[0].lower()
+                walls = [w for w in q.get('walls', [''])[0].split(',') if w]
+                side_s = q.get('side', [''])[0].lower()
+                if side_s not in ('red', 'blue'):
+                    raise ValueError('side must be red or blue')
+                side = {'red': c.RED, 'blue': c.BLUE}[side_s]
+                for sq in (red_sq, blue_sq):
+                    if not sq or len(sq) != 2 or sq[0] not in c.LETTERS or not sq[1].isdigit():
+                        raise ValueError(f'Invalid square {sq!r}')
+                depth = int(q.get('depth', ['2'])[0])
+                seconds = float(q.get('seconds', ['4'])[0])
+                if not 1 <= depth <= 6 or not 0 < seconds <= 15:
+                    raise ValueError('depth 1-6, seconds >0 and at most 15')
+                red_left = int(q.get('red_left', ['10'])[0])
+                blue_left = int(q.get('blue_left', ['10'])[0])
+                if not SEARCH_LOCK.acquire(blocking=False):
+                    self._send(429, {'error': 'Coach is busy; try again shortly'})
+                    return
+                try:
+                    result = c.search_position(red_sq, blue_sq, walls, side, depth, seconds,
+                                               red_left, blue_left)
+                finally:
+                    SEARCH_LOCK.release()
+                scored = result['scored'] if result else []
+                top = [[s, m] for s, m in scored[:5]]
+                self._send(200, {
+                    'to_move': side_s,
+                    'top': top,
+                    'pawns': {'red': red_sq, 'blue': blue_sq},
+                    'walls': sorted(walls),
+                    'search': {k: v for k, v in result.items() if k != 'scored'},
+                    'legal_history': True,
+                })
             except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e)})
             return

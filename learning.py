@@ -107,6 +107,9 @@ def record_game(history_csv, winner, red_name=None, blue_name=None,
                     break
                 continue
             pos = ','.join(g.history)
+            if winner_side is None:
+                g.apply(mv)
+                continue
             if mover == winner_side:
                 con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,1,0)
                                ON CONFLICT(position,move) DO UPDATE SET won=won+1''', (pos, mv))
@@ -149,12 +152,12 @@ def outcome_stats(history):
 # --------------------------------------------------------------------------
 
 def record_evals(history_csv, winner, seed_len=0):
-    """Replay a finished game and record the causal 'why' per move.
+    """Replay a finished game and record the heuristic change per move.
 
     For each ply >= seed_len, store how much the move swung the mover's
     evaluation (delta = eval_before - eval_after; eval is lower-is-better, so
     positive delta means the move helped the mover, negative means it hurt),
-    tagged by whether that mover went on to win."""
+    tagged by the result; this is not a causal explanation."""
     game = coach.Game(coach.parse_history(history_csv))
     winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
     if winner not in (None, 'red', 'blue'):
@@ -291,6 +294,11 @@ def migrate_legacy_json():
 # Opponent tendency models
 # --------------------------------------------------------------------------
 
+def position_key(g):
+    return json.dumps([g.pawns[0], g.pawns[1], sorted(g.walls),
+                       g.remaining[0], g.remaining[1], g.to_move], separators=(',', ':'))
+
+
 def _game_side(game, name):
     if game.get('player1Username') == name:
         return 0, 1
@@ -300,13 +308,10 @@ def _game_side(game, name):
 
 
 def _winner_side(game):
-    w = game.get('winner')
-    if w in (0, 1) and not isinstance(w, bool):
-        return int(w)
-    try:
-        return int(w) - 1
-    except (TypeError, ValueError):
-        return None
+    # Public Barricade records use player numbers 1 and 2, including strings.
+    value = game.get('winner')
+    if isinstance(value, bool): return None
+    return {'1': coach.RED, '2': coach.BLUE}.get(str(value))
 
 
 def build_opponent_model(name, game_records):
@@ -315,7 +320,7 @@ def build_opponent_model(name, game_records):
     model = {
         'name': name,
         'built': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        'format': 2,
+        'format': 3,
         'games': 0, 'wins': 0,
         'rating_high': None, 'rating_low': None,
         'openings': {'red': defaultdict(lambda: defaultdict(int)),
@@ -329,6 +334,7 @@ def build_opponent_model(name, game_records):
         'avg_move_ms': None,
         'move_times': [],
     }
+    seen_histories = set()
     for game in game_records:
         sides = _game_side(game, name)
         if sides is None:
@@ -336,16 +342,18 @@ def build_opponent_model(name, game_records):
         my_side, opp_side = sides
         color = 'red' if my_side == 0 else 'blue'
         winner_side = _winner_side(game)
-        hist = coach.parse_history(game.get('historyCsv', ''))
         try:
+            hist = coach.Game(coach.parse_history(game.get('historyCsv', ''))).history
+            key = ','.join(hist)
+            if key in seen_histories: continue
+            seen_histories.add(key)
             g = coach.Game()
             for i, mv in enumerate(hist):
                 if g.to_move == my_side:
-                    pos = ','.join(g.history)
+                    pos = position_key(g)
                     if len(g.history) < 6:
                         model['openings'][color][mv][len(g.history)] += 1
-                    else:
-                        model['responses'][color][pos][mv] += 1
+                    model['responses'][color][pos][mv] += 1
                     if winner_side is not None and winner_side != my_side:
                         model['loss_positions'][color][pos] += 1
                 try:
@@ -382,6 +390,8 @@ def save_opponent(name, model):
 
 
 def load_opponent(name):
+    if not NAME_OK.fullmatch(name):
+        return None
     path = OPPONENTS / f'{name}.json'
     if path.exists():
         try:
@@ -395,8 +405,8 @@ def load_opponent(name):
 # blending tendencies. Same-color play is more predictive of what they'll do
 # *as this color*, but the other color is not ruled out (players have transferable
 # habits). Weights are deliberately soft; see advice.py for the overall blend.
-OPP_SAME_COLOR_WEIGHT = 0.75
-OPP_OTHER_COLOR_WEIGHT = 0.25
+OPP_SAME_COLOR_WEIGHT = 1.0
+OPP_OTHER_COLOR_WEIGHT = 0.0
 
 
 def opponent_insight(name, history, opp_color=None):
@@ -411,7 +421,9 @@ def opponent_insight(name, history, opp_color=None):
     pos = ','.join(history)
 
     # Format 1 (legacy): flat dicts {pos: {move: count}}.
-    if model.get('format') != 2:
+    if model.get('format') == 3:
+        pos = position_key(coach.Game(history))
+    if model.get('format') not in (2, 3):
         resp = (model.get('responses') or {}).get(pos)
         if not resp:
             return {'known': False, 'games': model.get('games', 0),

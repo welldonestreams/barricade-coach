@@ -24,41 +24,10 @@ from functools import lru_cache
 
 WIN = 100000
 
-_SHARE_NUM = re.compile(r'(?:^|\s)\d+\s*\.')
-_PLY_RE = re.compile(r'[a-i][1-9]|[hv][a-h][1-8]')
-
 def parse_history(value):
-    """Accept a comma list ('e2,e8,e3') or a barricade.gg share string
-    ('1.e2e8 2.e3e7 3.hd2hd6 ...'), where each numbered group holds the
-    concatenated red+blue ply of that round."""
     if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            return []
-        if _SHARE_NUM.search(value):
-            return share_to_moves(value)
         value = value.split(',') if value.strip() else []
     return [normalize_move(m) for m in value]
-
-def share_to_moves(text):
-    """barricade.gg 'N.rrbb N.rrbb ...' -> flat ply list (alternating red/blue).
-    A ply is a pawn square (e2) or a wall (hd4 / ve3); each group concatenates
-    the two plies of a round, so split greedily by ply shape."""
-    out = []
-    for group in text.split():
-        group = _SHARE_NUM.sub('', group, count=1)
-        if not group:
-            continue
-        i, n = 0, len(group)
-        while i < n:
-            c = group[i]
-            if c in 'hv' and i + 2 < n and group[i + 2].isdigit() and not group[i + 1].isdigit():
-                out.append(group[i:i + 3]); i += 3          # wall: hd4, ve3
-            elif c in 'hv' and i + 1 < n and group[i + 1].isdigit():
-                out.append(group[i:i + 2]); i += 2          # pawn on h/v file
-            else:
-                out.append(group[i:i + 2]); i += 2          # pawn: e2
-    return [normalize_move(m) for m in out]
 
 def normalize_move(m):
     if not isinstance(m, str):
@@ -233,6 +202,40 @@ class Game:
         g.remaining = self.remaining.copy()
         return g
 
+    @classmethod
+    def from_position(cls, red_sq, blue_sq, walls, side, red_left=10, blue_left=10):
+        """Build a Game from an explicit position instead of a move history.
+        red_sq/blue_sq: 'e5' squares; walls: list of wall notations; side: RED/BLUE
+        (the side to move). Used by the live overlay so a wrong/partial move
+        history can never desync the board the coach reasons about."""
+        if side not in (RED, BLUE):
+            raise ValueError('Invalid side')
+        for sq in (red_sq, blue_sq):
+            if not isinstance(sq, str) or not re.fullmatch(r'[a-i][1-9]', sq):
+                raise ValueError('Invalid pawn square')
+        if red_sq == blue_sq:
+            raise ValueError('Pawns cannot occupy the same square')
+        for count in (red_left, blue_left):
+            if type(count) is not int or not 0 <= count <= 10:
+                raise ValueError('Wall reserves must be integers from 0 to 10')
+        walls = list(walls)
+        if len(set(walls)) != len(walls) or len(walls) != 20-red_left-blue_left:
+            raise ValueError('Placed walls and remaining counts disagree')
+        g = cls()
+        g.history = ['~'] if side == BLUE else []
+        g.pawns = {RED: (letter_idx(red_sq[0]), int(red_sq[1])-1),
+                   BLUE: (letter_idx(blue_sq[0]), int(blue_sq[1])-1)}
+        for wall in walls:
+            if not isinstance(wall, str) or not re.fullmatch(r'[hv][a-h][1-8]', wall):
+                raise ValueError('Invalid wall notation')
+            if not g.is_wall_legal(wall):
+                raise ValueError('Walls overlap, cross, or block a goal')
+            g.walls.add(wall)
+        if red_sq[1] == '9' and blue_sq[1] == '1':
+            raise ValueError('Both players cannot have won')
+        g.remaining = {RED: red_left, BLUE: blue_left}
+        return g
+
     def _play(self, mv):
         """Internal only: apply a move already validated or generated as legal."""
         mover = self.to_move
@@ -333,6 +336,26 @@ def search(history, side=None, depth=2, time_limit=5.0):
     side = g.to_move if side is None else side
     if side not in (RED, BLUE) or g.to_move != side:
         raise ValueError(f'History says {"red" if g.to_move == RED else "blue"} to move')
+    return _search_game(g, side, depth, time_limit, started, deadline)
+
+
+def search_position(red_sq, blue_sq, walls, side, depth=2, time_limit=5.0,
+                    red_left=10, blue_left=10):
+    """Search from an explicit position (live overlay path) instead of history.
+    side: RED/BLUE = the side to move."""
+    if not isinstance(depth, int) or not 1 <= depth <= 12:
+        raise ValueError('Depth must be an integer from 1 to 12')
+    if not isinstance(time_limit, (int, float)) or not math.isfinite(time_limit) or time_limit <= 0:
+        raise ValueError('Time limit must be positive and finite')
+    if side not in (RED, BLUE):
+        raise ValueError('side must be red or blue')
+    started = time.monotonic()
+    deadline = started + time_limit
+    g = Game.from_position(red_sq, blue_sq, walls, side, red_left, blue_left)
+    return _search_game(g, side, depth, time_limit, started, deadline)
+
+
+def _search_game(g, side, depth, time_limit, started, deadline):
     if g.winner is not None:
         return dict(scored=[], depth=0, nodes=0, elapsed=time.monotonic()-started, timed_out=False, winner=g.winner, principal_variation=[])
     nodes = 0

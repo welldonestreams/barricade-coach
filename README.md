@@ -121,3 +121,53 @@ and does not enable cross-origin access. It is a local tool, not a public servic
 
 The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
+
+
+## Firefox / Tampermonkey overlay (1.0)
+
+Run START-COACH.cmd, then replace the existing Tampermonkey script with
+`overlay/barricade-live-coach.user.js` (also served at
+http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
+Do not run the old and new scripts together. Version 1.0 appears in the panel.
+
+
+The overlay independently checks the numbered move list, pawn squares, placed
+wall identifiers, and the player cards' remaining counts. Unreadable or mismatched
+positions receive no advice. It never reconstructs moves from polling differences
+or accuses you of a move inferred from a hover preview. Switching Red/Blue changes
+your side, independently of rotating the board. Steak-prefixed usernames and
+configured aliases are recognized. Green marks the recommended square or wall;
+it moves with scrolling/rotation and clears on a changed or uncertain position.
+Replay scrubbing with a full future move list fails closed rather than guessing.
+
+Live searches normally get 4 seconds; uncontested central openings get 0.35 seconds.
+The bridge stops waiting after 18 seconds and discards stale responses. This is a
+response deadline, not a promise that every overloaded machine finds strong advice.
+`/api/live` checks the board/history match and legality again before responding.
+Route changes and a searched reply explain the recommendation; short searches are
+not proof of optimal play. Opponent data breaks exact tactical ties only, from
+validated matching positions and the opponent's current color. Model collection is
+asynchronous and never blocks the move query. No matching evidence is shown plainly.
+
+## Training without automatic self-reinforcement
+
+`python training.py --games 100 --workers 2 --evaluate 100` runs bounded parallel
+experiments from randomly sampled, validated positions in the current top-100
+archive. Two CPU cores are reserved where possible; Windows workers run below
+normal priority. It uses a fixed tactical engine, not the live learning blend.
+
+Games are deduplicated by normalized history and split by content hash. Held-out
+games and their exact positions never contribute learned outcomes. Cutoff games
+are not losses. Each candidate is evaluated from identical held-out positions in
+both colors against a frozen baseline. A minimum of 100 pairs and a conservative
+95% lower bound above 50% on pair wins are required for promotion. Unsuccessful
+experiments remain under ignored `memory/experiments`; only a passing champion can
+break exact nonterminal tactical ties in live advice. Legacy mixed self-play tables
+and repeated static evaluation deltas cannot influence recommendations. More
+self-play does not itself establish stronger play or leaderboard Elo.
+
+The old selfplay.py collector remains for compatibility; its tables are not used
+for live move selection. Existing older worker processes do not acquire the new
+promotion behavior until restarted. Tests: `python -m unittest -v`, including Node
+regressions. The local `/overlay-fixture` page exercises the screenshot position
+and rotation without playing a real match.

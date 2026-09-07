@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
-"""Self-play with position seeding: the coach plays itself, but instead of
-always starting from an empty board, it frequently resumes from a real
-mid-game position sampled from the study archive (top players' games). This
-breaks the self-vs-self feedback loop — the engine is forced to solve
-positions it did not generate, so it can't just replay its own narrow line.
-
-Also supports N parallel workers (separate processes, safe via SQLite WAL),
-each assigned a worker id for log separation.
+"""Legacy data collection only. These mixed outcome tables do not affect live
+advice. Use training.py for isolated parallel experiments and a held-out gate.
+Random seed positions improve coverage but do not prove strength gains.
 """
 import argparse
 import random

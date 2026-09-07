@@ -9,3 +9,6 @@ study/archive/
 memory/
 *.log
 study/collection-summary.json
+
+*.bundle
+*.log.err
