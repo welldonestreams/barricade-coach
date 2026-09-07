@@ -50,15 +50,19 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     side=game.to_move if side is None else side
     if engine=='mcts':
         import mcts_coach
-        result=(mcts_coach.search(hist,side,seconds) if rollouts==60000 and seed is None
-                else mcts_coach.search(hist,side,seconds,rollouts,seed))
+        reserve=min(1.5, seconds*.35) if game.walls and any(game.remaining.values()) else 0
+        budget=max(.001, deadline-time.monotonic()-reserve)
+        result=(mcts_coach.search(hist,side,budget) if rollouts==60000 and seed is None
+                else mcts_coach.search(hist,side,budget,rollouts,seed))
     elif engine=='python':
         result=c.search(hist,side,depth,max(.001,seconds-.1))
     else:
         raise ValueError('Engine must be python or mcts')
     result['engine']=engine
-    if engine=='mcts' and game.walls and result.get('scored') and not result.get('fallback'):
-        result=_tactical_crosscheck(hist, side, result, seconds)
+    if (engine=='mcts' and game.walls and any(game.remaining.values())
+            and result.get('scored') and not result.get('fallback')
+            and not result.get('forced_loss') and result.get('tactical')!='immediate win'):
+        result=_tactical_crosscheck(hist, side, result, deadline-time.monotonic())
     tactical=list(result.get('scored') or [])
     result.update(tactical=tactical,blend=[],learning_policy='validated exact ties only')
     if not tactical or result.get('fallback') or (engine=='python' and result.get('depth',0)<2):
@@ -69,7 +73,7 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     for score,move in tactical:
         preference=0; evidence=None; learned=0
         # Never reorder different tactical scores, including proven outcomes.
-        eligible=score==best and game.winner is None and not (engine=='python' and abs(score)>=c.WIN-100)
+        eligible=not result.get('tactical_override') and score==best and game.winner is None and not (engine=='python' and abs(score)>=c.WIN-100)
         if eligible and move in prior:
             won,n=prior[move]
             if 0<=won<=n:
@@ -99,31 +103,31 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
 
 
 def _tactical_crosscheck(hist, side, mcts_result, seconds):
-    """Override MCTS only when a fast minimax sees a decisively better move.
+    """Compare completed depth-two heuristic scores within the remaining budget.
 
-    Walls present and a non-fallback MCTS result are the preconditions (checked
-    by the caller). A depth-2 minimax completes in ~1.5s and reliably finds the
-    precise defensive walls that MCTS rollouts miss. The gap threshold is large
-    enough that we never second-guess MCTS on a close call.
+    This is a shallow heuristic safeguard, not an exact wall-game solution.
+    A changed recommendation uses one consistent minimax score scale throughout.
     """
-    budget = min(1.5, max(0.2, seconds * 0.35))
-    mm = c.search(hist, side, depth=2, time_limit=budget)
+    if seconds <= .01:
+        return mcts_result
+    mm = c.search(hist, side, depth=2, time_limit=seconds)
+    mcts_result['crosscheck_depth'] = mm.get('depth', 0)
     if not mm.get('scored') or mm.get('depth', 0) < 2:
         return mcts_result
     mm_best = mm['scored'][0]
     mcts_top = mcts_result['scored'][0][1]
-    if mm_best[1] == mcts_top:
-        return mcts_result
     mm_scores = {m: s for s, m in mm['scored']}
-    mcts_top_mm = mm_scores.get(mcts_top)
-    if mcts_top_mm is None:
+    if mcts_top not in mm_scores or mm_best[1] == mcts_top:
         return mcts_result
-    gap = mcts_top_mm - mm_best[0]
-    if gap < TACTICAL_GAP_CP:
+    gap = mm_scores[mcts_top] - mm_best[0]
+    if gap <= TACTICAL_GAP_CP:
         return mcts_result
     mcts_result['tactical_override'] = dict(
-        mcts_top=mcts_top, minimax_best=mm_best[1], gap=round(gap, 1))
-    mcts_result['scored'] = [mm_best] + [(s, m) for s, m in mcts_result['scored'] if m != mm_best[1]]
-    mcts_result['principal_variation'] = [mm_best[1]]
-    mcts_result['crosscheck'] = 'minimax depth 2 saw a decisively better move'
+        mcts_top=mcts_top, minimax_best=mm_best[1], gap=round(gap, 1), depth=2,
+        score_units='heuristic points', proven=False)
+    mcts_result['mcts_scored'] = list(mcts_result['scored'])
+    mcts_result['scored'] = list(mm['scored'])
+    mcts_result['score_units'] = 'heuristic points'
+    mcts_result['principal_variation'] = list(mm['principal_variation'])
+    mcts_result['crosscheck'] = 'completed depth-two heuristic comparison'
     return mcts_result

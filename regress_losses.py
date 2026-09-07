@@ -65,10 +65,10 @@ def opponent_reply(hist, best_move, seconds):
 
 
 def build_regressions(history, winner, user_side, seconds, margin=30.0):
-    """For each user ply, propose the best move with a long MCTS search, then
-    CONFIRM the blunder with a deterministic minimax (centipawns). Only a move
-    that minimax also rates `margin` centipawns worse than the best is recorded,
-    so the corpus holds real tactical blunders, not MCTS visit-count noise."""
+    """Record completed minimax disagreements and the separate MCTS proposal.
+
+    Scores are heuristic points. A disagreement is not a proof of a lost game.
+    """
     history = c.Game(c.parse_history(history)).history
     user_side = {'red': c.RED, 'blue': c.BLUE}[user_side]
     cases = []
@@ -76,9 +76,14 @@ def build_regressions(history, winner, user_side, seconds, margin=30.0):
     for i, mv in enumerate(history):
         side = g.to_move
         if side == user_side:
-            best_move, _ = long_search(g.history, side, seconds)
-            # Deterministic confirmation: minimax depth-2 centipawn gap.
+            mcts_proposal, _ = long_search(g.history, side, seconds)
+            # Compare only scores from the same completed depth.
             mm = c.search(g.history, side, depth=2, time_limit=min(4, seconds))
+            if mm.get('depth',0)<2:
+                g.apply(mv)
+                continue
+            # Include minimax's own candidate even when MCTS misses a wall.
+            best_move = mm['scored'][0][1]
             mm_scores = {m: sc for sc, m in mm['scored']}
             played_sc = mm_scores.get(mv)
             best_sc = mm_scores.get(best_move)
@@ -86,6 +91,8 @@ def build_regressions(history, winner, user_side, seconds, margin=30.0):
                 reply, _ = opponent_reply(g.history, best_move, seconds)
                 cases.append(dict(
                     ply=i + 1, history=g.history[:], position=live_position(g),
+                    completed_depth=mm['depth'], score_units='heuristic points', proven=False,
+                    mcts_proposal=mcts_proposal,
                     played=mv, best=best_move, delta=round(played_sc - best_sc, 1),
                     alternatives=[m for _, m in mm['scored'][:4]],
                     opponent_reply=reply))

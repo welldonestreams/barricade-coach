@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barricade Live Coach
 // @namespace    welldonestreams
-// @version      1.1.0
+// @version      1.2.0
 // @description  Verified board advice, visible highlights and factual explanations
 // @match        https://barricade.gg/*
 // @grant        GM_getValue
@@ -61,7 +61,7 @@
   const cache=new Map();
   const panel=document.createElement('div'); panel.id='bc-coach';
   panel.style.cssText='position:fixed;right:16px;top:16px;z-index:2147483000;background:#111827f5;color:#f9fafb;border:1px solid #64748b;border-radius:12px;padding:12px;max-width:350px;font:14px system-ui;box-shadow:0 4px 20px #0008';
-  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.1</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
+  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.2</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
   document.body.appendChild(panel);
   const el=id=>panel.querySelector('#bc-'+id);
   function clear() { highlights.forEach(e=>e.remove()); highlights=[]; }
@@ -296,7 +296,7 @@
     for(const port of [8810,8811]) {
       const base='http://127.0.0.1:'+port;
       const compatible=await new Promise(resolve=>GM_xmlhttpRequest({method:'GET',url:base+'/api/health',timeout:1500,
-        onload:r=>{try{const h=JSON.parse(r.responseText);resolve(h.service==='barricade-coach'&&h.live_protocol>=4)}catch{resolve(false)}},
+        onload:r=>{try{const h=JSON.parse(r.responseText);resolve(h.service==='barricade-coach'&&h.live_protocol>=5)}catch{resolve(false)}},
         onerror:()=>resolve(false),ontimeout:()=>resolve(false)}));
       if(compatible){COACH=base;setInterval(tick,300);return;}
     }

@@ -123,12 +123,12 @@ The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
 
 
-## Firefox / Tampermonkey overlay (1.1)
+## Firefox / Tampermonkey overlay (1.2)
 
 Run START-COACH.cmd, then replace the existing Tampermonkey script with
 `overlay/barricade-live-coach.user.js` (also served at
 http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
-Do not run the old and new scripts together. Version 1.1 appears in the panel.
+Do not run the old and new scripts together. Version 1.2 appears in the panel.
 
 
 The overlay independently checks the numbered move list, pawn squares, placed
@@ -189,7 +189,7 @@ claim. The one-reply safety check also detects unavoidable next-turn goals witho
 running MCTS. These solve board outcomes, not clocks or leaderboard performance.
 
 Run START-COACH.cmd to reuse/start a compatible server on 8810 or 8811. Overlay
-1.1 probes both ports and requires live_protocol 4, so an older elevated server
+1.2 probes both ports and requires live_protocol 5, so an older elevated server
 cannot accidentally answer its requests. The ready-to-install copy is also in
 Downloads. Firefox installation still requires replacing the existing Tampermonkey
 script and reloading the page; do not enable two versions together.

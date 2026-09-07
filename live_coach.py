@@ -61,7 +61,7 @@ def explain(g, result):
             text+=' Time limit reached; using completed simulation batches.'
         ov=result.get('tactical_override')
         if ov:
-            text+=f" Cross-check found a better move: MCTS favored {ov['mcts_top']}, but an exact wall search prefers {ov['minimax_best']} by {ov['gap']:g}."
+            text+=f" Cross-check found a better move: MCTS favored {ov['mcts_top']}, but a completed depth-two search prefers {ov['minimax_best']} by {ov['gap']:g} heuristic points. This is not a proven win."
         return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
@@ -92,7 +92,7 @@ def validated_game(params):
     return g
 
 
-def query(params):
+def query(params, record_trace=True):
     started=time.monotonic()
     g=validated_game(params)
     hist=g.history
@@ -131,5 +131,7 @@ def query(params):
                 winner=g.winner, request_id=params.get('request_id'),
                 search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation')},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
-    trace(params,payload)
+    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','score_units') if k in result})
+    if record_trace:
+        trace(params,payload)
     return payload

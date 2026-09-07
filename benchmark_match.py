@@ -17,6 +17,7 @@ from pathlib import Path
 
 import coach as c
 import mcts_coach
+import live_coach
 
 ROOT = Path(__file__).resolve().parent
 
@@ -34,8 +35,12 @@ def opponent_move(hist, side, spec, seconds):
 
 
 def coach_move(hist, side, seconds):
-    r = mcts_coach.search(hist, side, time_limit=seconds)
-    return r['scored'][0][1], r
+    g=c.Game(hist)
+    if side!=g.to_move: raise ValueError('Wrong side to move')
+    params=live_coach.position(g)
+    params.update(h=','.join(hist),walls=','.join(sorted(g.walls)),seconds=str(seconds))
+    r=live_coach.query(params, record_trace=False)
+    return r['top'][0][1], r
 
 
 def play(hist, coach_side, opponent_spec, seconds, max_plies=160):
@@ -68,7 +73,7 @@ def run(opponents, seconds, games_per_side, openers, seed0):
 def summarize(records):
     by_opp = {}
     for r in records:
-        by_opp.setdefault(r['opponent'], [0, 0, 0])  # wins, losses, draws
+        by_opp.setdefault(r['opponent'], [0, 0, 0])  # wins, losses, unresolved
         if r['winner'] is None:
             by_opp[r['opponent']][2] += 1
         elif r['coach_won']:
@@ -78,7 +83,7 @@ def summarize(records):
     out = {}
     for spec, (w, l, d) in by_opp.items():
         n = w + l + d
-        out[spec] = dict(games=n, wins=w, losses=l, draws=d,
+        out[spec] = dict(games=n, wins=w, losses=l, unresolved=d,
                          winrate=round(w / n, 3) if n else 0.0)
     return out
 
@@ -98,7 +103,7 @@ def main():
     t = time.monotonic()
     records = run(opponents, args.seconds, args.games_per_side, openers, None)
     summary = summarize(records)
-    output = dict(seconds_per_move=args.seconds, games_per_side=args.games_per_side,
+    output = dict(coach_build=live_coach.BUILD, coach_path='live_coach.query', seconds_per_move=args.seconds, games_per_side=args.games_per_side,
                   opponents=opponents, summary=summary, records=records,
                   elapsed_s=round(time.monotonic() - t, 1))
     (ROOT / 'study' / 'match-benchmark.json').write_text(json.dumps(output, indent=2), encoding='utf-8')

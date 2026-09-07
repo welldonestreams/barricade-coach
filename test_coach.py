@@ -213,7 +213,10 @@ class ApiTests(unittest.TestCase):
         with patch.object(mcts_coach,'search',return_value=result) as engine:
             status,d=self.fetch('/api/move?engine=mcts&seconds=1')
         self.assertEqual(status,200); self.assertEqual(d['search']['engine'],'mcts')
-        engine.assert_called_once_with([],c.RED,1.0)
+        engine.assert_called_once()
+        self.assertEqual(engine.call_args.args[:2], ([],c.RED))
+        self.assertGreater(engine.call_args.args[2], 0)
+        self.assertLessEqual(engine.call_args.args[2], 1.0)
         status,d=self.fetch('/api/move?engine=python&depth=1')
         self.assertEqual(d['search']['engine'],'python')
 
