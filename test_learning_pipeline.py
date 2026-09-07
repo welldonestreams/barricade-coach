@@ -101,5 +101,13 @@ class PolicyValueTests(unittest.TestCase):
         self.assertEqual(measure_real_games.interval(0,0),[None,None])
         self.assertLess(measure_real_games.interval(85,100)[0],.85)
 
+    def test_arena_runs_complete_color_swapped_pairs_in_parallel(self):
+        fake=dict(points=1.0,winner=c.RED,plies=10,illegal=0,candidate_latencies=[.1])
+        with patch.object(arena,'play',return_value=fake):
+            report=arena.evaluate({},[[],['e2','e8']],.01,1,workers=2)
+        self.assertEqual(report['arena_pairs'],2)
+        self.assertEqual(report['games'],4)
+        self.assertEqual(len(report['records']),4)
+
 
 if __name__=='__main__':unittest.main()

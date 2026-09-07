@@ -21,6 +21,7 @@ def main():
     ap.add_argument('--teacher-depth',type=int,default=3);ap.add_argument('--teacher-seconds',type=float,default=8)
     ap.add_argument('--teacher-workers',type=int,default=8)
     ap.add_argument('--arena-pairs',type=int,default=100);ap.add_argument('--arena-seconds',type=float,default=1)
+    ap.add_argument('--arena-workers',type=int,default=2)
     ap.add_argument('--league-games',type=int,default=200);ap.add_argument('--league-seconds',type=float,default=.5)
     ap.add_argument('--run-dir',help='resume an existing run directory')
     args=ap.parse_args();run_dir=(Path(args.run_dir).resolve() if args.run_dir else ROOT/'memory'/'runs'/str(time.time_ns()))
@@ -38,7 +39,7 @@ def main():
         frozen=[]
         if promoted:frozen=['--frozen',*promoted[-3:]]
         run(['arena.py',candidate,*inputs,'--pairs',args.arena_pairs,'--seconds',args.arena_seconds,
-             '--promote','--player-holdout-only',*frozen])
+             '--workers',args.arena_workers,'--promote','--player-holdout-only',*frozen])
         report=json.loads((candidate.parent/'arena-report.json').read_text(encoding='utf-8'))
         if not report.get('promoted'):
             print(json.dumps(dict(stopped='candidate did not pass promotion',round=round_no)),flush=True);break
