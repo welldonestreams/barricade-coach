@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         u = urlparse(self.path)
         if u.path == '/api/health':
-            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 3})
+            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 4})
             return
         if u.path == '/overlay-fixture':
             with open(os.path.join(ROOT, 'overlay', 'fixture.html'), 'rb') as f:
@@ -365,20 +365,23 @@ class Handler(BaseHTTPRequestHandler):
                 seconds = float(q.get('seconds', ['1.0'])[0])
                 if not 1 <= depth <= 4 or not 0 < seconds <= 10:
                     raise ValueError('depth 1-4, seconds >0 and at most 10')
-                # Post-game review is not latency-critical: wait for a live search
-                # to finish instead of bouncing the request. 429 only after a long
-                # stall (e.g. a wedged MCTS subprocess).
-                if not SEARCH_LOCK.acquire(timeout=12):
+                # Bound the complete review request, including lock acquisition.
+                if not SEARCH_LOCK.acquire(timeout=.1):
                     self._send(429, {'error': 'Coach is busy; try again shortly'})
                     return
                 try:
-                    rows = c.grade_game(hist, side, depth=depth, time_limit=seconds)
+                    if 'red' in q or 'blue' in q:
+                        import live_coach
+                        live_coach.validated_game({k:v[0] for k,v in q.items()})
+                    rows = c.grade_game(hist, side, depth=depth, time_limit=seconds, total_time=12)
                 finally:
                     SEARCH_LOCK.release()
-                blunders = [r for r in rows if r.get('delta') is not None and r['delta'] > 0]
+                blunders = [r for r in rows if r.get('depth',0)>=2 and r.get('delta') is not None and r['delta'] > 0]
                 blunders.sort(key=lambda r: -r['delta'])
                 self._send(200, {'side': side_s, 'plies_graded': len(rows),
-                                 'blunders': blunders[:3], 'all': rows})
+                                 'blunders': blunders[:3], 'all': rows,
+                                 'complete': len(rows)==sum(i%2==side for i in range(len(hist))),
+                                 'winner': c.Game(hist).winner})
             except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e)})
             return

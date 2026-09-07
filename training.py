@@ -143,7 +143,7 @@ def main():
     pairs=[sum(scores[i:i+2]) for i in range(0,len(scores),2)]
     passed,low=promotion_gate(pairs)
     passed=passed and baseline_hash==hashlib.sha256((ROOT/'coach.py').read_bytes()).hexdigest()
-    report=dict(seed=args.seed,workers=workers,training_games=len(matches),positions=len(prior),
+    report=dict(engine="python",seed=args.seed,workers=workers,training_games=len(matches),positions=len(prior),
                 holdout_pairs=len(pairs),candidate_points=sum(scores),matches=len(scores),
                 pair_win_lower_95=low,promoted=passed,baseline_sha256=baseline_hash,
                 limitation='One fixed tactical baseline; no leaderboard Elo estimate')

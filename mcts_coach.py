@@ -14,6 +14,7 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
     if not isinstance(rollouts, int) or not 2 <= rollouts <= 200000:
         raise ValueError('Rollouts must be an integer from 2 to 200000')
     started = time.monotonic()
+    deadline = started + time_limit
     g = c.Game(history)
     side = g.to_move if side is None else side
     if side != g.to_move:
@@ -32,6 +33,16 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
             return result
         if not any(p[1] == c.GOALS[1-side] for _, p in child.pawn_moves(1-side)):
             safe.append(move)
+    if not safe:
+        # Every legal action permits an immediate goal. This is a proof from
+        # the complete legal set, not a rollout estimate; don't waste the clock.
+        move = min(legal, key=lambda mv: _value(g, mv, side))
+        child = g.copy(); child._play(move)
+        reply = next(p for _,p in child.pawn_moves(1-side) if p[1]==c.GOALS[1-side])
+        reply = c.LETTERS[reply[0]]+str(reply[1]+1)
+        result.update(scored=[(c.WIN-2, move)], forced_loss=True,
+                      principal_variation=[move,reply], elapsed=time.monotonic()-started)
+        return result
     allowed = set(safe or legal)
     if time_limit - (time.monotonic() - started) < 0.05:
         # Budget too small to even spawn Node meaningfully; return the safe
@@ -55,7 +66,7 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
         except Exception:
             ncpu = 2
         workers = max(1, min(4, ncpu - 2))
-    workers = max(1, int(workers))
+    workers = max(1, min(4, int(workers)))
     seconds = max(0.001, time_limit - (time.monotonic() - started))
     flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
     adapter = str(Path(__file__).with_name('mcts_adapter.cjs'))
@@ -64,14 +75,19 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
         # Each worker gets the FULL rollouts cap but its own seed, so it runs flat
         # out for the whole time budget (the cap is only hit at very short budgets).
         seed_w = None if seed is None else (seed + w * 7919) & 0xFFFFFFFF
-        payload = dict(history=g.history, rollouts=rollouts, seconds=seconds, seed=seed_w)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return dict(candidates=[], simulations=0, timed_out=True)
+        payload = dict(history=g.history, rollouts=rollouts, seconds=max(.001, remaining-.08), seed=seed_w)
+        interrupted = False
         try:
             completed = subprocess.run([node, adapter], input=json.dumps(payload),
-                text=True, capture_output=True, timeout=seconds + 10.0, creationflags=flags)
+                text=True, capture_output=True, timeout=max(.001, deadline-time.monotonic()), creationflags=flags)
             out = completed.stdout
             if completed.returncode:
                 return dict(candidates=[], simulations=0, timed_out=True)
         except subprocess.TimeoutExpired as exc:
+            interrupted = True
             out = exc.stdout or b''
             if isinstance(out, bytes):
                 out = out.decode('utf-8', errors='replace')
@@ -82,7 +98,7 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
             except json.JSONDecodeError:
                 pass  # A killed process may leave one incomplete final line.
         data = batches[-1] if batches else dict(candidates=[], simulations=0)
-        data['timed_out'] = False
+        data['timed_out'] = interrupted
         return data
 
     datas = [run_one(w) for w in range(workers)] if workers == 1 else list(

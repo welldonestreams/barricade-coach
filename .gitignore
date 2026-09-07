@@ -12,3 +12,5 @@ study/collection-summary.json
 
 *.bundle
 *.log.err
+
+logs/

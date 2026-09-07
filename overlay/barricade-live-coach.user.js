@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barricade Live Coach
 // @namespace    welldonestreams
-// @version      1.0.0
+// @version      1.1.0
 // @description  Verified board advice, visible highlights and factual explanations
 // @match        https://barricade.gg/*
 // @grant        GM_getValue
@@ -51,7 +51,7 @@
   if (typeof module!=='undefined' && module.exports) {
     module.exports={parseRows,positionKey,rectForMove,responseMatches}; return;
   }
-  const COACH='http://127.0.0.1:8810';
+  let COACH=null;
   const mine=n=>/^steak/i.test(n)||[GM_getValue('bc_me','steak2222'),...GM_getValue('bc_alts','').split(',')].some(m=>m.toLowerCase()===n.toLowerCase());
   let myColor=null, opponent='', gameId='', manual=false, enabled=true;
   let current=null, stableKey='', stableTicks=0, generation=0, request=null, lastAdvice=null;
@@ -61,7 +61,7 @@
   const cache=new Map();
   const panel=document.createElement('div'); panel.id='bc-coach';
   panel.style.cssText='position:fixed;right:16px;top:16px;z-index:2147483000;background:#111827f5;color:#f9fafb;border:1px solid #64748b;border-radius:12px;padding:12px;max-width:350px;font:14px system-ui;box-shadow:0 4px 20px #0008';
-  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.0</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
+  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.1</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
   document.body.appendChild(panel);
   const el=id=>panel.querySelector('#bc-'+id);
   function clear() { highlights.forEach(e=>e.remove()); highlights=[]; }
@@ -71,7 +71,7 @@
   }
   function setColor(color, isManual=false) {
     if(isManual) {manual=true;GM_setValue('bc_color_'+gameId,color);}
-    if(color!==myColor) {myColor=color; invalidate('Color updated'); stableTicks=0;}
+    if(color!==myColor) {myColor=color;analyzedFor=null;invalidate('Color updated');stableTicks=0;}
     for(const c of ['red','blue']) {el(c).setAttribute('aria-pressed',String(c===myColor));el(c).style.background=c===myColor?'#047857':'#374151';el(c).style.color='white';}
   }
   el('red').onclick=()=>setColor('red',true); el('blue').onclick=()=>setColor('blue',true);
@@ -170,8 +170,8 @@
     const me = GM_getValue('bc_me','steak2222');
     const oppName = opponent || 'unknown';
     const winnerName = data.winner === 0 ? 'red' : 'blue';
-    const red = myColor === 'red' ? me : oppName;
-    const blue = myColor === 'blue' ? me : oppName;
+    const red = snapshot.red_name || (myColor === 'red' ? me : oppName);
+    const blue = snapshot.blue_name || (myColor === 'blue' ? me : oppName);
     const p = new URLSearchParams({h: snapshot.h, winner: winnerName, red, blue});
     GM_xmlhttpRequest({method:'GET', url: COACH + '/api/record?' + p, timeout: 4000,
       onload(){}, onerror(){}, ontimeout(){}});
@@ -182,19 +182,21 @@
     // search can briefly hold the lock. Fire once per game; retry on 429.
     if(analyzedFor === gameId) return;
     analyzedFor = gameId;
-    const firedFor = gameId;
+    const firedFor = gameId, reviewColor = myColor;
     if(!myColor) { invalidate('Game finished'); return; }
     if(!snapshot || !snapshot.h) { invalidate('Game finished'); return; }
-    recordGame(data, snapshot);
+    invalidate('Game finished — verifying review');
     const winnerName = data.winner === 0 ? 'red' : 'blue';
     el('move').textContent = winnerName === myColor ? 'You won' : 'You lost';
     el('status').textContent = 'Analyzing this game…';
     el('why').textContent = '';
-    const p = new URLSearchParams({h: snapshot.h, side: myColor, depth: '2', seconds: '0.6'});
+    const p = new URLSearchParams({h:snapshot.h, side:myColor, red:snapshot.red, blue:snapshot.blue,
+      walls:snapshot.walls.join(','), red_left:snapshot.red_left, blue_left:snapshot.blue_left, depth:'2',seconds:'0.6'});
     const attempt = (tries) => {
-      GM_xmlhttpRequest({method:'GET', url: COACH + '/api/analyze?' + p, timeout: 25000,
+      if(gameId!==firedFor||myColor!==reviewColor||!enabled)return;
+      GM_xmlhttpRequest({method:'GET', url: COACH + '/api/analyze?' + p, timeout: 18000,
         onload(res) {
-          if(gameId !== firedFor) return;   // navigated away; don't touch the pill
+          if(gameId !== firedFor || myColor!==reviewColor || !enabled) return;   // navigated away; don't touch the pill
           try {
             const d = JSON.parse(res.responseText);
             if (res.status === 429) {
@@ -202,21 +204,23 @@
               throw Error(d.error || 'coach busy');
             }
             if (res.status !== 200 || d.error) throw Error(d.error || 'analysis failed');
+            if (d.winner !== data.winner) throw Error('Game result and history disagree');
+            recordGame(data,snapshot);
             if (!d.blunders || !d.blunders.length) {
-              el('status').textContent = 'No clear blunders at depth 2 — clean game.';
+              el('status').textContent = (d.complete?'Review complete':'Partial review')+' — no errors established at depth 2 in the reviewed moves.';
               return;
             }
             const lines = d.blunders.map(b =>
               `ply ${b.ply}: you played ${b.move} — coach had ${b.best} (Δ${b.delta})`).join('\n');
-            el('status').textContent = `Top blunders (${d.side}):`;
+            el('status').textContent = `${d.complete?'Review':'Partial review'} candidates (${d.side}):`;
             el('why').textContent = lines;
           } catch(e) {
             el('status').textContent = 'Analysis unavailable.';
             el('why').textContent = e.message;
           }
         },
-        onerror(){ el('status').textContent = 'Analysis unavailable.'; },
-        ontimeout(){ el('status').textContent = 'Analysis timed out.'; }
+        onerror(){ if(gameId===firedFor) el('status').textContent = 'Analysis unavailable.'; },
+        ontimeout(){ if(gameId===firedFor) el('status').textContent = 'Analysis timed out.'; }
       });
     };
     attempt(3);
@@ -237,7 +241,7 @@
     const key=gameId+'|'+opponent+'|'+positionKey(snapshot);
     if(cache.has(key)) {present(cache.get(key),snapshot);return;}
     const id=String(++generation);
-    const params=new URLSearchParams({...snapshot,grid:'',root:'',opponent,seconds:'4',request_id:id,walls:snapshot.walls.join(',')});
+    const params=new URLSearchParams({...snapshot,grid:'',root:'',opponent,game_id:gameId,seconds:'4',request_id:id,walls:snapshot.walls.join(',')});
     el('status').textContent='Thinking…';
     request=GM_xmlhttpRequest({method:'GET',url:COACH+'/api/live?'+params,timeout:18000,
       onload(res) {
@@ -257,14 +261,14 @@
     });
   }
   function tick() {
-    if(!enabled)return;
+    if(!enabled||!COACH)return;
     const url=location.pathname+location.search;
     if(url!==gameId){gameId=url;manual=false;myColor=null;opponent='';cache.clear();current=null;stableKey='';stableTicks=0;analyzedFor=null;invalidate('Reading this game');const saved=GM_getValue('bc_color_'+gameId,null);if(saved==='red'||saved==='blue')setColor(saved,true);}
     const board=readBoard();
     if(!board){if(current)invalidate('Waiting for a readable board');current=null;return;}
     const hist=readHistory(board),cards=readCards(board);
     if(!hist||!cards){if(current)invalidate('Waiting for the numbered move list and wall counts');current=null;clear();return;}
-    const snapshot={...board,h:hist.join(','),red_left:cards.red.left,blue_left:cards.blue.left};
+    const snapshot={...board,h:hist.join(','),red_left:cards.red.left,blue_left:cards.blue.left,red_name:cards.red.name,blue_name:cards.blue.name};
     // Game over: a pawn on its goal rank. Detect it directly from the board so
     // the post-game review fires no matter whose turn it was or whether the
     // move list was fully readable.
@@ -273,7 +277,6 @@
       // Game finished: freeze this game's tick loop so we stop polling /api/live
       // (which would hold the search lock and starve the analysis), and only
       // kick off the review once.
-      analyzedFor=gameId;
       analyzeGame({winner: redOnGoal ? 0 : 1}, snapshot);
       return;
     }
@@ -287,5 +290,16 @@
     ask(snapshot);
   }
   // No guessed transitions, predictive history, or “you played” accusations.
-  setInterval(tick,300);
+  // Only connect to a server with these safeguards. An elevated older server
+  // may own 8810; the updated local fallback can safely use 8811.
+  (async()=>{
+    for(const port of [8810,8811]) {
+      const base='http://127.0.0.1:'+port;
+      const compatible=await new Promise(resolve=>GM_xmlhttpRequest({method:'GET',url:base+'/api/health',timeout:1500,
+        onload:r=>{try{const h=JSON.parse(r.responseText);resolve(h.service==='barricade-coach'&&h.live_protocol>=4)}catch{resolve(false)}},
+        onerror:()=>resolve(false),ontimeout:()=>resolve(false)}));
+      if(compatible){COACH=base;setInterval(tick,300);return;}
+    }
+    el('status').textContent='Run START-COACH.cmd to start the updated coach, then reload this page.';
+  })();
 })();

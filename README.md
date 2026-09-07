@@ -123,12 +123,12 @@ The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
 
 
-## Firefox / Tampermonkey overlay (1.0)
+## Firefox / Tampermonkey overlay (1.1)
 
 Run START-COACH.cmd, then replace the existing Tampermonkey script with
 `overlay/barricade-live-coach.user.js` (also served at
 http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
-Do not run the old and new scripts together. Version 1.0 appears in the panel.
+Do not run the old and new scripts together. Version 1.1 appears in the panel.
 
 
 The overlay independently checks the numbered move list, pawn squares, placed
@@ -140,8 +140,9 @@ configured aliases are recognized. Green marks the recommended square or wall;
 it moves with scrolling/rotation and clears on a changed or uncertain position.
 Replay scrubbing with a full future move list fails closed rather than guessing.
 
-Live searches normally get 4 seconds; uncontested central openings get 0.35 seconds.
-The bridge stops waiting after 18 seconds and discards stale responses. This is a
+Live searches normally use parallel MCTS with 4 seconds; uncontested central
+openings get 1.2 seconds (Python opening mode uses 0.35 seconds).
+All MCTS workers share that single deadline. The bridge stops waiting after 18 seconds and discards stale responses. This is a
 response deadline, not a promise that every overloaded machine finds strong advice.
 `/api/live` checks the board/history match and legality again before responding.
 Route changes and a searched reply explain the recommendation; short searches are
@@ -162,7 +163,8 @@ are not losses. Each candidate is evaluated from identical held-out positions in
 both colors against a frozen baseline. A minimum of 100 pairs and a conservative
 95% lower bound above 50% on pair wins are required for promotion. Unsuccessful
 experiments remain under ignored `memory/experiments`; only a passing champion can
-break exact nonterminal tactical ties in live advice. Legacy mixed self-play tables
+break exact nonterminal tactical ties in the same Python engine that was
+evaluated. They do not transfer to MCTS without a matching evaluation. Legacy mixed self-play tables
 and repeated static evaluation deltas cannot influence recommendations. More
 self-play does not itself establish stronger play or leaderboard Elo.
 
@@ -171,3 +173,29 @@ for live move selection. Existing older worker processes do not acquire the new
 promotion behavior until restarted. Tests: `python -m unittest -v`, including Node
 regressions. The local `/overlay-fixture` page exercises the screenshot position
 and rotation without playing a real match.
+
+
+## Safeguards after the 54ea0f9 review
+
+The uncapped position-swing blend has been removed from live advice. Averaging a
+static heuristic does not provide independent causal evidence, and MCTS visit
+shares are not centipawns. Research tables remain on disk; collecting more rows
+cannot silently promote them. Exact-tie opponent preferences are actually used
+in sorting. A champion must pass its held-out gate and match the engine/source.
+
+When both inventories are empty, endgame.py solves the reachable pawn-state graph,
+including jumps, turn order, and cycles. An unfinished solve returns no exact
+claim. The one-reply safety check also detects unavoidable next-turn goals without
+running MCTS. These solve board outcomes, not clocks or leaderboard performance.
+
+Run START-COACH.cmd to reuse/start a compatible server on 8810 or 8811. Overlay
+1.1 probes both ports and requires live_protocol 4, so an older elevated server
+cannot accidentally answer its requests. The ready-to-install copy is also in
+Downloads. Firefox installation still requires replacing the existing Tampermonkey
+script and reloading the page; do not enable two versions together.
+
+Advice traces are kept locally in logs/live-advice.jsonl (5 MB rotation plus one
+backup), including board history and build fingerprint. Post-game review checks
+history/board agreement, caps the whole review at 12 seconds, and labels partial
+results. See study/additional/1ttbdt-review.md for the latest reported loss and
+what the evidence does and does not establish.

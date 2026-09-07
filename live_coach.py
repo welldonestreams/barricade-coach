@@ -5,6 +5,23 @@ import time
 import coach as c
 import advice
 import learning
+from pathlib import Path
+
+BUILD = hashlib.sha256(b"".join(Path(__file__).with_name(n).read_bytes() for n in ("coach.py", "advice.py", "mcts_coach.py", "endgame.py", "live_coach.py"))).hexdigest()[:12]
+
+def trace(params, payload):
+    """Bounded local audit trail; never sends game history to an external service."""
+    try:
+        folder=Path(__file__).with_name("logs");folder.mkdir(exist_ok=True)
+        path=folder/"live-advice.jsonl"
+        if path.exists() and path.stat().st_size>5_000_000:
+            path.replace(folder/"live-advice.previous.jsonl")
+        row=dict(utc=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),build=BUILD,
+                 game=params.get("game_id", "")[:240],history=payload["history"],
+                 position=payload["position"],top=payload["top"],search=payload["search"])
+        with path.open("a",encoding="utf-8") as f:f.write(json.dumps(row)+"\n")
+    except OSError:
+        pass
 
 
 def position(g):
@@ -27,15 +44,21 @@ def explain(g, result):
     jump=sum(abs(child.pawns[side][i]-g.pawns[side][i]) for i in (0,1))>1
     kind='Uses one wall' if len(move)==3 else ('Jumps over the opponent' if jump else 'Moves your pawn')
     text=f'{kind}. Your route {before[0]} → {after[0]}; opponent route {before[1]} → {after[1]} (squares, excluding jumps).'
+    if result.get('forced_loss'):
+        return text+' Every legal move allows the opponent to reach the goal next turn; no saving move remains.'
+    if result.get('exact'):
+        text+=f" Exact pawn-only result: {result['outcome']}"
+        if result.get('goal_plies') is not None: text+=f" in {result['goal_plies']} plies with optimal play"
+        return text+'. Includes jumps and whose turn it is; excludes clocks.'
     if result.get('engine')=='mcts':
         sims=result.get('simulations',0)
         if sims:
             text+=f' {sims} simulated games searched end-to-end.'
         else:
             text+=' Monte Carlo search; too few simulations to be confident.'
-        why_hist = learning.explain_why(g.history, move)
-        if why_hist:
-            text += f' {why_hist}.'
+        text+=' Rollout outcomes are estimates, not a measured win rate against players.'
+        if result.get('timed_out'):
+            text+=' Time limit reached; using completed simulation batches.'
         return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
@@ -47,8 +70,7 @@ def explain(g, result):
     return text
 
 
-def query(params):
-    started=time.monotonic()
+def validated_game(params):
     hist=c.parse_history(params.get('h',''))
     if len(params.get('h',''))>8000:
         raise ValueError('History too long')
@@ -64,6 +86,14 @@ def query(params):
             except (TypeError,ValueError): raise ValueError('Cannot read remaining walls')
         if supplied!=expected:
             raise ValueError(f'Board/history mismatch: {field}; waiting for a stable board')
+    return g
+
+
+def query(params):
+    started=time.monotonic()
+    g=validated_game(params)
+    hist=g.history
+    actual=position(g)
     seconds=float(params.get('seconds','4'))
     if not 0<seconds<=15:
         raise ValueError('Time budget must be greater than zero and at most 15 seconds')
@@ -80,15 +110,23 @@ def query(params):
         budget=min(seconds, 1.2) if early else seconds
     else:
         budget=min(seconds,.35) if early else seconds
-    result=advice.advise(hist,g.to_move,depth=2 if early else 4,
-                         seconds=max(.001,budget-(time.monotonic()-started)),
-                         opp_name=params.get('opponent') or None,
-                         engine=engine)
+    result=None
+    if not any(g.remaining.values()) and g.winner is None:
+        import endgame
+        result=endgame.solve(g,seconds=min(.75,budget/3))
+    if result is None:
+        result=advice.advise(hist,g.to_move,depth=2 if early else 4,
+                             seconds=max(.001,budget-(time.monotonic()-started)),
+                             opp_name=params.get('opponent') or None,
+                             engine=engine)
+    result['elapsed']=time.monotonic()-started
     legal=g.moves(g.to_move)
     if any(mv not in legal for _,mv in result['scored']):
         raise ValueError('Engine returned a move outside the validated legal set')
-    return dict(position=actual, history=g.history, to_move=actual['side'],
+    payload=dict(position=actual, history=g.history, to_move=actual['side'],
                 legal=legal, top=result['scored'][:5], why=explain(g,result),
                 winner=g.winner, request_id=params.get('request_id'),
-                search={k:result[k] for k in ('depth','elapsed','timed_out','principal_variation')},
-                opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4])
+                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation')},
+                opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
+    trace(params,payload)
+    return payload

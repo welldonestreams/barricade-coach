@@ -209,8 +209,8 @@ def learned_reasons(history):
     {games, avg_delta, won, lost, winrate}} where avg_delta is the average
     heuristic swing the move produced for its mover (eval_before - eval_after;
     positive = the move improved the mover's position, negative = it hurt).
-    This is the 'why' a move is good or bad, independent of who won the game:
-    a strong move in a lost game still shows a positive avg_delta."""
+    This repeats a static heuristic; it is not causal evidence or proof of
+    move quality. Use only for offline research, never as a live ranking signal."""
     g = coach.Game(history)
     state = position_key(g)
     con = _db()
@@ -299,7 +299,7 @@ def explain_why(history, move):
     if not cell:
         return None
     n = cell['games']
-    return f"historically {cell['avg_delta']:+.0f} position swing, won {cell['winrate']*100:.0f}% (N={n})"
+    return f"recorded heuristic change {cell['avg_delta']:+.0f}, won {cell['winrate']*100:.0f}% (N={n})"
 
 
 def build_prior_from_archive(src=None, max_games=None):
@@ -372,6 +372,8 @@ def record_evals(history_csv, winner, seed_len=0):
     winner_side = {'red': coach.RED, 'blue': coach.BLUE}.get(winner)
     if winner not in (None, 'red', 'blue'):
         raise ValueError('winner must be red, blue or null')
+    if winner_side is None:
+        return False
     con = _db()
     _init(con)
     try:

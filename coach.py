@@ -535,9 +535,10 @@ def explain(history, side, move):
              f"  their best reply: {worst[1]} -> red SP={final[0]}, blue SP={final[1]} (score {worst[0]:+d})"]
     return "\n".join(lines)
 
-def grade_game(history, side, n=4, depth=2, time_limit=5.0):
+def grade_game(history, side, n=4, depth=2, time_limit=5.0, total_time=None):
     """Grade every ply of `side` in history using coach best-moves.
     Returns list of dicts: ply, move, rank, best, score_played, score_best, n_cand."""
+    deadline = time.monotonic()+total_time if total_time is not None else math.inf
     history = Game(history).history
     if side not in (RED, BLUE):
         raise ValueError('Side must be red (0) or blue (1)')
@@ -546,7 +547,9 @@ def grade_game(history, side, n=4, depth=2, time_limit=5.0):
         if i % 2 != (0 if side == RED else 1):
             continue
         state = history[:i]
-        result = search(state, side, depth, time_limit)
+        remaining = deadline-time.monotonic()
+        if remaining <= 0: break
+        result = search(state, side, depth, min(time_limit, remaining))
         scored = result['scored']
         if result['depth'] == 0:
             rows.append(dict(ply=i+1, move=history[i], rank=None, best=None,
