@@ -41,7 +41,11 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     tactical = list(result.get('scored') or [])
     result['tactical'] = tactical
     result['blend'] = []
-    if not tactical or engine != 'python' or result.get('depth', 0) < 2:
+    if not tactical:
+        return result
+    if engine == 'python' and result.get('depth', 0) < 2:
+        return result
+    if engine == 'mcts' and result.get('simulations', 0) < 200:
         return result
     best_score = tactical[0][0]
     prior=approved_prior(game)

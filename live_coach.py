@@ -26,6 +26,13 @@ def explain(g, result):
     jump=sum(abs(child.pawns[side][i]-g.pawns[side][i]) for i in (0,1))>1
     kind='Uses one wall' if len(move)==3 else ('Jumps over the opponent' if jump else 'Moves your pawn')
     text=f'{kind}. Your route {before[0]} → {after[0]}; opponent route {before[1]} → {after[1]} (squares, excluding jumps).'
+    if result.get('engine')=='mcts':
+        sims=result.get('simulations',0)
+        if sims:
+            text+=f' {sims} simulated games searched end-to-end.'
+        else:
+            text+=' Monte Carlo search; too few simulations to be confident.'
+        return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
         text+=f' Searched reply: {pv[1]}.'
@@ -58,11 +65,21 @@ def query(params):
         raise ValueError('Time budget must be greater than zero and at most 15 seconds')
     # A short full-width search in the uncontested central opening, not a
     # hard-coded move. As soon as pawns approach or a wall appears, use full budget.
+    engine=(params.get('engine','mcts') or 'mcts').lower()
+    if engine not in ('mcts','python'):
+        engine='mcts'
+    # The opening is cheap to decide; give the search the full budget otherwise.
+    # MCTS needs a little time to spin up its Node subprocess, so never squeeze it
+    # below ~1.2s; the opening book covers the first few plies regardless.
     early=not g.walls and all(p[0]==4 for p in g.pawns.values()) and abs(g.pawns[0][1]-g.pawns[1][1])>3
-    budget=min(seconds,.35) if early else seconds
+    if engine=='mcts':
+        budget=min(seconds, 1.2) if early else seconds
+    else:
+        budget=min(seconds,.35) if early else seconds
     result=advice.advise(hist,g.to_move,depth=2 if early else 4,
                          seconds=max(.001,budget-(time.monotonic()-started)),
-                         opp_name=params.get('opponent') or None)
+                         opp_name=params.get('opponent') or None,
+                         engine=engine)
     legal=g.moves(g.to_move)
     if any(mv not in legal for _,mv in result['scored']):
         raise ValueError('Engine returned a move outside the validated legal set')

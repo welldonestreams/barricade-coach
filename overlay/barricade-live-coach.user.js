@@ -177,6 +177,12 @@
       onload(){}, onerror(){}, ontimeout(){}});
   }
   function analyzeGame(data, snapshot) {
+    // Idempotent: the same finished game can be re-detected every tick (both the
+    // tick-level goal check and present()'s winner branch), and the server's live
+    // search can briefly hold the lock. Fire once per game; retry on 429.
+    if(analyzedFor === gameId) return;
+    analyzedFor = gameId;
+    const firedFor = gameId;
     if(!myColor) { invalidate('Game finished'); return; }
     if(!snapshot || !snapshot.h) { invalidate('Game finished'); return; }
     recordGame(data, snapshot);
@@ -184,28 +190,36 @@
     el('move').textContent = winnerName === myColor ? 'You won' : 'You lost';
     el('status').textContent = 'Analyzing this game…';
     el('why').textContent = '';
-    const p = new URLSearchParams({h: snapshot.h, side: myColor, depth: '2', seconds: '2'});
-    GM_xmlhttpRequest({method:'GET', url: COACH + '/api/analyze?' + p, timeout: 25000,
-      onload(res) {
-        try {
-          const d = JSON.parse(res.responseText);
-          if (res.status !== 200 || d.error) throw Error(d.error || 'analysis failed');
-          if (!d.blunders || !d.blunders.length) {
-            el('status').textContent = 'No clear blunders at depth 2 — clean game.';
-            return;
+    const p = new URLSearchParams({h: snapshot.h, side: myColor, depth: '2', seconds: '0.6'});
+    const attempt = (tries) => {
+      GM_xmlhttpRequest({method:'GET', url: COACH + '/api/analyze?' + p, timeout: 25000,
+        onload(res) {
+          if(gameId !== firedFor) return;   // navigated away; don't touch the pill
+          try {
+            const d = JSON.parse(res.responseText);
+            if (res.status === 429) {
+              if (tries > 0) { el('status').textContent = 'Coach busy — retrying analysis…'; setTimeout(() => attempt(tries-1), 1500); return; }
+              throw Error(d.error || 'coach busy');
+            }
+            if (res.status !== 200 || d.error) throw Error(d.error || 'analysis failed');
+            if (!d.blunders || !d.blunders.length) {
+              el('status').textContent = 'No clear blunders at depth 2 — clean game.';
+              return;
+            }
+            const lines = d.blunders.map(b =>
+              `ply ${b.ply}: you played ${b.move} — coach had ${b.best} (Δ${b.delta})`).join('\n');
+            el('status').textContent = `Top blunders (${d.side}):`;
+            el('why').textContent = lines;
+          } catch(e) {
+            el('status').textContent = 'Analysis unavailable.';
+            el('why').textContent = e.message;
           }
-          const lines = d.blunders.map(b =>
-            `ply ${b.ply}: you played ${b.move} — coach had ${b.best} (Δ${b.delta})`).join('\n');
-          el('status').textContent = `Top blunders (${d.side}):`;
-          el('why').textContent = lines;
-        } catch(e) {
-          el('status').textContent = 'Analysis unavailable.';
-          el('why').textContent = e.message;
-        }
-      },
-      onerror(){ el('status').textContent = 'Analysis unavailable.'; },
-      ontimeout(){ el('status').textContent = 'Analysis timed out.'; }
-    });
+        },
+        onerror(){ el('status').textContent = 'Analysis unavailable.'; },
+        ontimeout(){ el('status').textContent = 'Analysis timed out.'; }
+      });
+    };
+    attempt(3);
   }
   function present(data,snapshot) {
     if(data.winner!==null) {analyzeGame(data,snapshot);return;}
@@ -255,7 +269,10 @@
     // the post-game review fires no matter whose turn it was or whether the
     // move list was fully readable.
     const redOnGoal = /9$/.test(board.red), blueOnGoal = /1$/.test(board.blue);
-    if((redOnGoal||blueOnGoal) && analyzedFor!==gameId) {
+    if(redOnGoal||blueOnGoal) {
+      // Game finished: freeze this game's tick loop so we stop polling /api/live
+      // (which would hold the search lock and starve the analysis), and only
+      // kick off the review once.
       analyzedFor=gameId;
       analyzeGame({winner: redOnGoal ? 0 : 1}, snapshot);
       return;

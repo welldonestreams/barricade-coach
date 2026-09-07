@@ -365,7 +365,10 @@ class Handler(BaseHTTPRequestHandler):
                 seconds = float(q.get('seconds', ['1.0'])[0])
                 if not 1 <= depth <= 4 or not 0 < seconds <= 10:
                     raise ValueError('depth 1-4, seconds >0 and at most 10')
-                if not SEARCH_LOCK.acquire(blocking=False):
+                # Post-game review is not latency-critical: wait for a live search
+                # to finish instead of bouncing the request. 429 only after a long
+                # stall (e.g. a wedged MCTS subprocess).
+                if not SEARCH_LOCK.acquire(timeout=12):
                     self._send(429, {'error': 'Coach is busy; try again shortly'})
                     return
                 try:
