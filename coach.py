@@ -404,6 +404,41 @@ class Game:
 class SearchTimeout(Exception):
     pass
 
+
+def relevant_walls(state, slack=2):
+    """Legal walls touching a near-shortest route for either pawn.
+
+    A tactical wall must block an edge a pawn may plausibly use. Generating
+    anchors from those edges avoids scanning all 128 board slots at every node
+    while retaining immediate blocks and two-step route traps.
+    """
+    if not state.remaining[state.to_move]:return []
+    adj=graph(frozenset(state.walls));walls=set()
+    for side in (RED,BLUE):
+        start=state.pawns[side][1]*9+state.pawns[side][0]
+        from_start=[99]*81;from_start[start]=0;q=deque([start])
+        while q:
+            cell=q.popleft()
+            for nxt in adj[cell]:
+                if from_start[nxt]==99:
+                    from_start[nxt]=from_start[cell]+1;q.append(nxt)
+        to_goal=distances(frozenset(state.walls),GOALS[side]);best=to_goal[start]
+        for cell in range(81):
+            if from_start[cell]==99:continue
+            x,y=cell%9,cell//9
+            for nxt in adj[cell]:
+                if from_start[cell]+1+to_goal[nxt]>best+slack:continue
+                nx,ny=nxt%9,nxt//9
+                if x==nx:
+                    rank=max(y,ny)
+                    for anchor in (x-1,x):
+                        if 0<=anchor<8 and 1<=rank<=8:walls.add(f'h{LETTERS[anchor]}{rank}')
+                else:
+                    anchor=min(x,nx)
+                    for rank in (y,y+1):
+                        if 0<=anchor<8 and 1<=rank<=8:walls.add(f'v{LETTERS[anchor]}{rank}')
+    return [wall for wall in sorted(walls) if state.is_wall_legal(wall)]
+
 def search(history, side=None, depth=2, time_limit=5.0):
     """Full-width iterative deepening. Only complete, equally deep root scores survive."""
     if not isinstance(depth, int) or not 1 <= depth <= 12:
@@ -433,6 +468,75 @@ def search_position(red_sq, blue_sq, walls, side, depth=2, time_limit=5.0,
     deadline = started + time_limit
     g = Game.from_position(red_sq, blue_sq, walls, side, red_left, blue_left)
     return _search_game(g, side, depth, time_limit, started, deadline)
+
+
+def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
+                     root_moves=()):
+    """Deterministic selective minimax for wall-rich live positions.
+
+    Full-width depth two often cannot finish inside the live safeguard budget
+    because a position can have more than 120 legal walls at every ply. This
+    search keeps every pawn move, the statically strongest wall candidates and
+    explicitly supplied MCTS root candidates. It is selective rather than a
+    proof, but all returned moves are legal and every published iteration is
+    complete over the declared candidate set.
+    """
+    if not 1 <= depth <= 6 or not 2 <= beam <= 32:
+        raise ValueError('Invalid candidate-search limits')
+    started=time.monotonic();deadline=started+time_limit;g=Game(history)
+    side=g.to_move if side is None else side
+    if side!=g.to_move:raise ValueError('Wrong side to move')
+    nodes=0
+    def check():
+        if time.monotonic()>=deadline:raise SearchTimeout
+    def candidates(state, forced=(),root=False):
+        check();rows=[]
+        moves=[f'{LETTERS[p[0]]}{p[1]+1}' for _,p in state.pawn_moves(state.to_move)]
+        moves.extend(relevant_walls(state))
+        if forced:
+            legal_forced=set(state.moves(state.to_move))
+            moves.extend(move for move in forced if move not in moves and move in legal_forced)
+        for move in moves:
+            check();child=state.copy();child._play(move)
+            rows.append((child.eval_side(side),move,child))
+        reverse=state.to_move!=side
+        rows.sort(key=lambda row:((-row[0] if reverse else row[0]),len(row[1]),row[1]))
+        keep={move for _,move,_ in rows[:beam*(2 if root else 1)]}
+        keep.update(move for _,move,_ in rows if len(move)==2)
+        keep.update(move for move in forced if move in {row[1] for row in rows})
+        return [row for row in rows if row[1] in keep]
+    roots=candidates(g,root_moves,root=True)
+    scored=[(score,move) for score,move,_ in roots];scored.sort()
+    completed=1;pv=[scored[0][1]] if scored else []
+    def minimax(state,left,alpha,beta,ply):
+        nonlocal nodes
+        check();nodes+=1
+        if state.winner is not None:return (-WIN+ply if state.winner==side else WIN-ply),[]
+        if left==0:return state.eval_side(side),[]
+        maximizing=state.to_move!=side
+        value=-math.inf if maximizing else math.inf;line=[]
+        for _,move,child in candidates(state):
+            score,tail=minimax(child,left-1,alpha,beta,ply+1)
+            if (score>value if maximizing else score<value):value,line=score,[move]+tail
+            if maximizing:alpha=max(alpha,value)
+            else:beta=min(beta,value)
+            if alpha>=beta:break
+        return value,line
+    timed_out=False
+    try:
+        for current in range(2,depth+1):
+            iteration=[];lines={}
+            for _,move,child in roots:
+                value,tail=minimax(child,current-1,-math.inf,math.inf,1)
+                iteration.append((value,move));lines[move]=[move]+tail
+            iteration.sort(key=lambda row:(row[0],len(row[1]),row[1]))
+            scored=iteration;completed=current;pv=lines[scored[0][1]]
+            order={move:i for i,(_,move) in enumerate(scored)}
+            roots.sort(key=lambda row:order[row[1]])
+    except SearchTimeout:
+        timed_out=True
+    return dict(scored=scored,depth=completed,nodes=nodes,elapsed=time.monotonic()-started,
+                timed_out=timed_out,principal_variation=pv,selective=True,beam=beam)
 
 
 def _search_game(g, side, depth, time_limit, started, deadline):

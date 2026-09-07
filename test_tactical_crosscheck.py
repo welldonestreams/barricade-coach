@@ -13,6 +13,7 @@ import regress_losses
 
 
 CASES = json.loads(Path(__file__).with_name('study').joinpath('tactical-loss-cases.json').read_text())
+RECENT = json.loads(Path(__file__).with_name('study').joinpath('recent-loss-cases.json').read_text())
 
 
 def mcts(move, **extra):
@@ -21,6 +22,16 @@ def mcts(move, **extra):
 
 
 class TacticalCrosscheckTests(unittest.TestCase):
+    def test_recent_live_losses_are_overridden(self):
+        self.assertEqual({row['code'] for row in RECENT},{'qm1cd6','xc2vpz'})
+        for case in RECENT:
+            with self.subTest(code=case['code'],ply=case['ply']):
+                with patch.object(mcts_coach,'search',return_value=mcts(case['mcts_move'])):
+                    result=advice.advise(case['history'],engine='mcts',seconds=4)
+                self.assertEqual(result['scored'][0][1],case['best'])
+                self.assertGreater(result['tactical_override']['gap'],80)
+                self.assertTrue(result['tactical_override']['selective'])
+
     def test_real_loss_overrides_survive_final_sort(self):
         self.assertEqual({r['code'] for r in CASES}, {'6pg0tr', '7kz1qb'})
         for case in CASES:
@@ -59,15 +70,15 @@ class TacticalCrosscheckTests(unittest.TestCase):
     def test_proven_result_does_not_run_crosscheck(self):
         for extra in (dict(forced_loss=True), dict(tactical='immediate win')):
             with patch.object(mcts_coach, 'search', return_value=mcts('hh5', **extra)), \
-                 patch.object(c, 'search', side_effect=AssertionError('already proven')):
+                 patch.object(c, 'candidate_search', side_effect=AssertionError('already proven')):
                 advice.advise(CASES[0]['history'], engine='mcts', seconds=4)
 
     def test_expired_budget_and_exact_threshold_do_not_override(self):
         result=mcts('d3')
-        with patch.object(c, 'search', side_effect=AssertionError('expired')):
+        with patch.object(c, 'candidate_search', side_effect=AssertionError('expired')):
             self.assertIs(advice._tactical_crosscheck([], 0, result, 0), result)
         mm=dict(scored=[(0,'hh5'),(80,'d3')],depth=2,principal_variation=['hh5'])
-        with patch.object(c, 'search', return_value=mm):
+        with patch.object(c, 'candidate_search', return_value=mm):
             self.assertNotIn('tactical_override', advice._tactical_crosscheck([],0,result,1))
 
     def test_explanation_does_not_claim_exact_wall_solution(self):

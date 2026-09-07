@@ -54,7 +54,7 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         import policy_value
         model=policy_value.load_champion() if policy_model is None else policy_model
         priors=policy_value.search_priors(model,game) if model else None
-        reserve=min(1.5, seconds*.35) if game.walls and any(game.remaining.values()) else 0
+        reserve=min(2.2, seconds*.5) if game.walls and any(game.remaining.values()) else 0
         budget=max(.001, deadline-time.monotonic()-reserve)
         result=(mcts_coach.search(hist,side,budget,root_priors=priors)
                 if rollouts==60000 and seed is None else
@@ -110,14 +110,23 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
 
 
 def _tactical_crosscheck(hist, side, mcts_result, seconds):
-    """Compare completed depth-two heuristic scores within the remaining budget.
+    """Compare completed selective heuristic scores within the remaining budget.
 
-    This is a shallow heuristic safeguard, not an exact wall-game solution.
+    This is a selective heuristic safeguard, not an exact wall-game solution.
     A changed recommendation uses one consistent minimax score scale throughout.
     """
     if seconds <= .01:
         return mcts_result
-    mm = c.search(hist, side, depth=2, time_limit=seconds)
+    mcts_moves=[move for _,move in mcts_result.get('scored',[])[:8]]
+    game=c.Game(hist)
+    if sum(game.remaining.values())<=6:
+        # With few walls left, full-width depth two is small enough to finish
+        # and preserves exact coverage of the known defensive-wall cases.
+        mm=c.search(hist,side,depth=2,time_limit=seconds)
+        mm['selective']=False
+    else:
+        mm = c.candidate_search(hist, side, depth=3, time_limit=seconds,
+                                beam=12,root_moves=mcts_moves)
     mcts_result['crosscheck_depth'] = mm.get('depth', 0)
     if not mm.get('scored') or mm.get('depth', 0) < 2:
         return mcts_result
@@ -130,11 +139,13 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
     if gap <= TACTICAL_GAP_CP:
         return mcts_result
     mcts_result['tactical_override'] = dict(
-        mcts_top=mcts_top, minimax_best=mm_best[1], gap=round(gap, 1), depth=2,
-        score_units='heuristic points', proven=False)
+        mcts_top=mcts_top, minimax_best=mm_best[1], gap=round(gap, 1), depth=mm['depth'],
+        score_units='heuristic points', proven=False, selective=mm.get('selective',False),
+        beam=mm.get('beam'))
     mcts_result['mcts_scored'] = list(mcts_result['scored'])
     mcts_result['scored'] = list(mm['scored'])
     mcts_result['score_units'] = 'heuristic points'
     mcts_result['principal_variation'] = list(mm['principal_variation'])
-    mcts_result['crosscheck'] = 'completed depth-two heuristic comparison'
+    kind='selective' if mm.get('selective') else 'full-width'
+    mcts_result['crosscheck'] = f"completed {kind} depth-{mm['depth']} heuristic comparison"
     return mcts_result

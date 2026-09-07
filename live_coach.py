@@ -61,7 +61,8 @@ def explain(g, result):
             text+=' Time limit reached; using completed simulation batches.'
         ov=result.get('tactical_override')
         if ov:
-            text+=f" Cross-check found a better move: MCTS favored {ov['mcts_top']}, but a completed depth-two search prefers {ov['minimax_best']} by {ov['gap']:g} heuristic points. This is not a proven win."
+            kind='selective' if ov.get('selective') else 'full-width'
+            text+=f" Cross-check found a better move: MCTS favored {ov['mcts_top']}, but a completed {kind} depth-{ov['depth']} search prefers {ov['minimax_best']} by {ov['gap']:g} heuristic points. This is not a proven win."
         return text
     pv=result.get('principal_variation',[])
     if len(pv)>1:
