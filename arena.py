@@ -42,8 +42,11 @@ def holdout_positions(paths,count,seed,player_only=False):
     for path in paths:
         with Path(path).open(encoding='utf-8') as src:
             for line in src:
-                try:row=json.loads(line);hist=c.Game(row['history']).history
-                except (ValueError,KeyError,json.JSONDecodeError):continue
+                try:
+                    row=json.loads(line)
+                    if not isinstance(row,dict):continue
+                    hist=c.Game(row['history']).history
+                except (ValueError,KeyError,TypeError,json.JSONDecodeError):continue
                 key=','.join(hist)
                 eligible=row.get('player_holdout') if player_only else (row.get('split')=='holdout')
                 if eligible and key not in seen:

@@ -48,6 +48,13 @@ class PolicyValueTests(unittest.TestCase):
         model=train_policy.train([row]*20,epochs=3,rate=.08,value_rate=.04,seed=1)
         self.assertLess(pv.value(model,c.Game()),0)  # learns "side to move is losing"
 
+    def test_loss_regressions_become_weighted_independent_examples(self):
+        path=Path(__file__).with_name('study')/'recent-loss-cases.json'
+        rows=list(train_policy.examples([path]))
+        self.assertEqual({row['game_hash'].split(':')[1] for row in rows},{'qm1cd6','xc2vpz'})
+        self.assertTrue(all(row['weight']==8 and row['source']=='independent-loss-regression'
+                            for row in rows))
+
 
     def test_color_normalization_points_both_sides_toward_rank_two(self):
         self.assertEqual(pv.normalize_move('e8',c.BLUE),'e2')
@@ -100,6 +107,12 @@ class PolicyValueTests(unittest.TestCase):
         self.assertLessEqual(arena.lower95([.5]*100),.5)
         self.assertEqual(measure_real_games.interval(0,0),[None,None])
         self.assertLess(measure_real_games.interval(85,100)[0],.85)
+
+    def test_arena_ignores_non_row_json_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'mixed.jsonl'
+            path.write_text('"not a row"\n'+json.dumps(dict(history=[],player_holdout=True)),encoding='utf-8')
+            self.assertEqual(arena.holdout_positions([path],1,1,player_only=True),[[]])
 
     def test_arena_runs_complete_color_swapped_pairs_in_parallel(self):
         fake=dict(points=1.0,winner=c.RED,plies=10,illegal=0,candidate_latencies=[.1])

@@ -30,15 +30,19 @@ def main():
     run(['teacher_data.py','--positions',args.positions,'--depth',args.teacher_depth,
          '--seconds',args.teacher_seconds,'--workers',args.teacher_workers,
          '--output',targets.relative_to(ROOT)])
-    inputs=[targets];promoted=[]
+    inputs=[targets,ROOT/'study'/'tactical-loss-cases.json',
+            ROOT/'study'/'recent-loss-cases.json'];promoted=[]
     for round_no in range(1,args.rounds+1):
         candidate=run_dir/f'round-{round_no}'/'model.json';candidate.parent.mkdir(exist_ok=True)
-        command=['train_policy.py',*inputs,'--output',candidate]
-        if round_no>1:command.append('--warm-start')
-        run(command)
+        if candidate.exists():
+            print(json.dumps(dict(resumed_candidate=str(candidate))),flush=True)
+        else:
+            command=['train_policy.py',*inputs,'--output',candidate]
+            if round_no>1:command.append('--warm-start')
+            run(command)
         frozen=[]
         if promoted:frozen=['--frozen',*promoted[-3:]]
-        run(['arena.py',candidate,*inputs,'--pairs',args.arena_pairs,'--seconds',args.arena_seconds,
+        run(['arena.py',candidate,targets,'--pairs',args.arena_pairs,'--seconds',args.arena_seconds,
              '--workers',args.arena_workers,'--promote','--player-holdout-only',*frozen])
         report=json.loads((candidate.parent/'arena-report.json').read_text(encoding='utf-8'))
         if not report.get('promoted'):
