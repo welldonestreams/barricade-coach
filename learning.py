@@ -58,6 +58,12 @@ def _init(con):
         PRIMARY KEY(position, move))''')
     con.execute('''CREATE TABLE IF NOT EXISTS games(
         key TEXT PRIMARY KEY, played_at TEXT)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS prior(
+        position TEXT NOT NULL, move TEXT NOT NULL,
+        won INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(position, move))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS prior_seen(
+        key TEXT PRIMARY KEY)''')
 
 
 def _stable_key(history_csv):
@@ -107,15 +113,16 @@ def record_game(history_csv, winner, red_name=None, blue_name=None,
                     break
                 continue
             pos = ','.join(g.history)
+            state = position_key(g)
             if winner_side is None:
                 g.apply(mv)
                 continue
-            if mover == winner_side:
-                con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,1,0)
-                               ON CONFLICT(position,move) DO UPDATE SET won=won+1''', (pos, mv))
-            else:
-                con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,0,1)
-                               ON CONFLICT(position,move) DO UPDATE SET lost=lost+1''', (pos, mv))
+            won = 1 if mover == winner_side else 0
+            lost = 0 if mover == winner_side else 1
+            con.execute('''INSERT INTO outcomes(position,move,won,lost) VALUES(?,?,?,?)
+                           ON CONFLICT(position,move) DO UPDATE SET won=won+excluded.won, lost=lost+excluded.lost''', (pos, mv, won, lost))
+            con.execute('''INSERT INTO prior(position,move,won,lost) VALUES(?,?,?,?)
+                           ON CONFLICT(position,move) DO UPDATE SET won=won+excluded.won, lost=lost+excluded.lost''', (state, mv, won, lost))
             try:
                 g.apply(mv)
             except ValueError:
@@ -150,6 +157,102 @@ def outcome_stats(history):
 # --------------------------------------------------------------------------
 # Eval-delta ("why") memory: position -> move -> avg eval swing + outcome
 # --------------------------------------------------------------------------
+
+def learned_prior(history):
+    """Board-state-keyed outcome prior for the CURRENT position.
+
+    Returns {move: {won, lost, total, winrate}} for every move ever played from
+    this exact board state (pawns + walls + reserves + side to move), across all
+    recorded games regardless of move order. This is the generalization the
+    legacy move-sequence key lacked: a position reached by any path aggregates
+    to the same key, so real win/loss signal accumulates instead of fragmenting
+    into one-sample rows."""
+    g = coach.Game(history)
+    state = position_key(g)
+    con = _db()
+    _init(con)
+    try:
+        rows = con.execute('SELECT move, won, lost FROM prior WHERE position=?', (state,)).fetchall()
+    finally:
+        con.close()
+    out = {}
+    for mv, won, lost in rows:
+        total = won + lost
+        if total:
+            out[mv] = {'won': won, 'lost': lost, 'total': total, 'winrate': won / total}
+    return out
+
+
+def prior_stats():
+    """How many board-state positions and moves the prior has learned."""
+    con = _db()
+    _init(con)
+    try:
+        positions = con.execute('SELECT COUNT(*) FROM prior').fetchone()[0]
+        moves = con.execute('SELECT COUNT(*) FROM (SELECT DISTINCT move FROM prior)').fetchone()[0]
+    finally:
+        con.close()
+    return {'positions': positions, 'moves': moves}
+
+
+def build_prior_from_archive(src=None, max_games=None):
+    """Replay archive games into the board-state prior.
+
+    Reads every game in study/archive (top-player public games), replays it, and
+    records each move's win/loss against its board state. Idempotent: games are
+    deduped via prior_seen by their full move list, so re-runs only add new games.
+    Returns the number of games newly incorporated."""
+    if src is None:
+        src = ROOT / 'study' / 'archive'
+    src = Path(src)
+    con = _db()
+    _init(con)
+    imported = 0
+    try:
+        for path in sorted(src.glob('*.json')):
+            try:
+                rec = json.loads(path.read_text(encoding='utf-8-sig'))
+            except (ValueError, OSError):
+                continue
+            try:
+                game = coach.Game(coach.parse_history(rec.get('historyCsv', '')))
+            except ValueError:
+                continue
+            hist = game.history
+            if not hist:
+                continue
+            winner = rec.get('winner')
+            winner_side = {'1': coach.RED, '2': coach.BLUE}.get(str(winner))
+            key = ','.join(hist)
+            if con.execute('SELECT 1 FROM prior_seen WHERE key=?', (key,)).fetchone():
+                continue
+            con.execute('INSERT INTO prior_seen(key) VALUES(?)', (key,))
+            g = coach.Game()
+            for mv in hist:
+                mover = g.to_move
+                state = position_key(g)
+                if winner_side is None:
+                    g.apply(mv)
+                    continue
+                won = 1 if mover == winner_side else 0
+                lost = 0 if mover == winner_side else 1
+                con.execute("""INSERT INTO prior(position,move,won,lost) VALUES(?,?,?,?)
+                               ON CONFLICT(position,move) DO UPDATE SET won=won+excluded.won, lost=lost+excluded.lost""", (state, mv, won, lost))
+                try:
+                    g.apply(mv)
+                except ValueError:
+                    break
+            imported += 1
+            if max_games and imported >= max_games:
+                break
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+    return imported
+
 
 def record_evals(history_csv, winner, seed_len=0):
     """Replay a finished game and record the heuristic change per move.
