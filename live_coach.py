@@ -129,7 +129,7 @@ def query(params, record_trace=True):
     payload=dict(position=actual, history=g.history, to_move=actual['side'],
                 legal=legal, top=result['scored'][:5], why=explain(g,result),
                 winner=g.winner, request_id=params.get('request_id'),
-                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation')},
+                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies') if k in result},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
     payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
     if record_trace:

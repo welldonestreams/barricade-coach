@@ -266,6 +266,11 @@ async function refresh(){
     if(info.engine!==engine) throw new Error('Server version mismatch. Restart the coach on an unused port.');
     $('stateLine').textContent+=(info.engine==='mcts'?' · '+info.simulations+' simulations':' · depth '+info.depth)+' · '+info.elapsed.toFixed(2)+'s'+
       (info.timed_out?' · time limit reached':'')+' · heuristic advice';
+    if(d.search.forced_loss || d.search.outcome==='opponent forced goal') {
+      clearAdvice('LOST — no saving move');
+      $('stateLine').textContent+=' · forced loss';
+      return;
+    }
     if(!d.top.length) { clearAdvice('No recommendation'); return; }
     const best=d.top[0][1];
     $('big').className='big '+me;

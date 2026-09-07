@@ -229,6 +229,13 @@
     if(data.winner!==null) {analyzeGame(data,snapshot);return;}
     if(!myColor) {invalidate('Choose your color');return;}
     if(data.to_move!==myColor) {invalidate('Opponent to move');return;}
+    if(data.search?.forced_loss || data.search?.outcome==='opponent forced goal') {
+      el('move').textContent='LOST — no saving move';
+      el('move').style.color='#fca5a5';
+      el('why').textContent=data.why || 'Every legal move loses with best play.';
+      clear();
+      return;
+    }
     const best=data.top[0]?.[1];if(!best)return;
     lastAdvice={data,key:positionKey(snapshot)};
     el('move').textContent='Play '+best;
