@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         u = urlparse(self.path)
         if u.path == '/api/health':
-            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 6})
+            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 7})
             return
         if u.path == '/overlay-fixture':
             with open(os.path.join(ROOT, 'overlay', 'fixture.html'), 'rb') as f:

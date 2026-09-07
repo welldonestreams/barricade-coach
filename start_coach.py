@@ -9,7 +9,7 @@ def main():
         try:
             with urlopen(f'http://127.0.0.1:{port}/api/health',timeout=1) as response:
                 health=json.load(response)
-            if health.get('service')=='barricade-coach' and health.get('live_protocol',0)>=6:
+            if health.get('service')=='barricade-coach' and health.get('live_protocol',0)>=7:
                 print(f'Updated coach already running: http://127.0.0.1:{port}',flush=True)
                 return
         except (OSError,ValueError):pass
