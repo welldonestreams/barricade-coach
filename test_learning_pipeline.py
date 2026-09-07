@@ -21,9 +21,28 @@ class PolicyValueTests(unittest.TestCase):
         state=pv.state_features(g)
         self.assertIn('my_resilience:3',state)
         self.assertIn('my_route_options:3',state)
+        # signed "who is ahead" signals for wall economy
+        self.assertTrue(any(x.startswith('progress_lead:') for x in state))
+        self.assertTrue(any(x.startswith('wall_lead:') for x in state))
         advanced=c.Game('e2,e8,e3,e7,e4,e6')
         self.assertIn('wall_no_immediate_gain',pv.action_features(advanced,'ha4'))
         self.assertIn('wall_net:1',pv.action_features(advanced,'hd3'))
+        # wall placement quality: every wall move carries an opponent-resilience
+        # change feature (does the wall cut the opponent's route flexibility?)
+        wall=c.Game('e2,e8,e3,e7,e4,e6,he3,hd4,f4,hf4')
+        af=pv.action_features(wall,'vc5')
+        self.assertTrue(any(x.startswith('wall_opp_resilience_change:') for x in af))
+
+    def test_teacher_keeps_depth2_wall_positions(self):
+        # Wall-heavy positions often can't finish depth-3 in budget. A completed
+        # depth-2 search is still a usable graded label and must not be dropped.
+        fixture=Path(__file__).with_name('study')/'additional'/'1ttbdt.json'
+        with patch.object(c,'search',return_value=dict(depth=2,scored=[(0,'e2')],nodes=10,
+                                                      tt_hits=0,elapsed=0.1)):
+            row=teacher_data.record(fixture,__import__('random').Random(1),8,8,3,1)
+        self.assertIsNotNone(row)
+        self.assertEqual(row['teacher']['depth'],2)
+
 
     def test_teacher_search_reports_transposition_reuse_metric(self):
         data=json.loads((Path(__file__).with_name('study')/'additional'/'1ttbdt.json').read_text())

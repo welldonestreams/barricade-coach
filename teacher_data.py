@@ -30,7 +30,8 @@ def record(path,rng,min_ply,max_ply,depth,seconds):
     if len(history)<=min_ply:return None
     ply=rng.randrange(min_ply,min(max_ply,len(history)-1)+1)
     g=c.Game(history[:ply]);result=c.search(g.history,g.to_move,depth,seconds)
-    if result.get('depth',0)<depth:return None
+    completed=result.get('depth',0)
+    if completed<2:return None  # even depth-2 unfinished -> unusable
     scores=result['scored'];best=scores[0][0]
     # A rank distribution is stable across heuristic scale changes and teaches
     # alternatives, unlike copying one human move or eventual outcome alone.
@@ -47,7 +48,7 @@ def record(path,rng,min_ply,max_ply,depth,seconds):
                 split=split_for(history),history=g.history,side=g.to_move,winner=winner,
                 value=value,
                 players=players,player_holdout=any(heldout_player(name) for name in players),
-                teacher=dict(engine='full-width-minimax',depth=result['depth'],
+                teacher=dict(engine='full-width-minimax',depth=completed,
                              nodes=result['nodes'],tt_hits=result.get('tt_hits',0),
                              seconds=result['elapsed'],
                              coach_sha256=hashlib.sha256(Path(c.__file__).read_bytes()).hexdigest()),

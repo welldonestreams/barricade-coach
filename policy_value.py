@@ -50,6 +50,11 @@ def state_features(g, side=None):
     op_rank=opp[1]+1 if side==c.RED else 9-opp[1]
     my_route=g.race_distance(side);op_route=g.race_distance(1-side)
     delta=max(-12,min(12,my_route-op_route))
+    # Signed "who is ahead" signals, distinct from path-length delta: raw pawn
+    # advancement and wall-reserve lead. These let the value model learn
+    # "I'm ahead -> conserve walls" vs "I'm behind -> must spend".
+    progress_lead=max(-8,min(8,my_rank-op_rank))
+    wall_lead=max(-10,min(10,g.remaining[side]-g.remaining[1-side]))
     stage=min(4,len(g.walls)//5)
     my_res=c.path_resilience(frozenset(g.walls),mine,c.GOALS[side])
     op_res=c.path_resilience(frozenset(g.walls),opp,c.GOALS[1-side])
@@ -58,6 +63,7 @@ def state_features(g, side=None):
          f'op_file:{opp[0]}',f'file_gap:{abs(mine[0]-opp[0])}',
          f'rank_gap:{abs(my_rank-op_rank)}',f'my_left:{g.remaining[side]}',
          f'op_left:{g.remaining[1-side]}',f'stage:{stage}',f'route_delta:{delta}',
+         f'progress_lead:{progress_lead}',f'wall_lead:{wall_lead}',
          f'my_resilience:{my_res}',f'op_resilience:{op_res}',
          f'my_route_options:{g.route_options(side)}',
          f'op_route_options:{g.route_options(1-side)}']
@@ -68,6 +74,7 @@ def state_features(g, side=None):
 
 def action_features(g, move, side=None):
     side=g.to_move if side is None else side
+    opp=g.pawns[1-side]
     norm=normalize_move(move,side)
     out=[f'a:{norm}',f'type:{"pawn" if len(move)==2 else move[0]}',
          f'afile:{norm[-2] if len(norm)==3 else norm[0]}',f'arank:{norm[-1]}']
@@ -78,7 +85,15 @@ def action_features(g, move, side=None):
                 f'op_route_change:{max(-4,min(4,after_op-before_op))}'))
     if len(move)==3:
         net=(after_op-before_op)-(after_me-before_me)
+        # Wall-placement quality: does it cut the opponent's number of distinct
+        # shortest-path routes (path flexibility), not just lengthen one route?
+        # This is the defensive-wall concept top players use and what the coach
+        # was blind to (game 76d51f).
+        before_res=c.path_resilience(frozenset(g.walls),opp,c.GOALS[1-side])
+        after_res=c.path_resilience(frozenset(child.walls),child.pawns[1-side],c.GOALS[1-side])
+        res_drop=before_res-after_res
         out.extend((f'wall_net:{max(-4,min(4,net))}',
+                    f'wall_opp_resilience_change:{max(-2,min(2,res_drop))}',
                     'wall_changes_route' if net else 'wall_no_immediate_gain'))
     if child.winner==side: out.append('wins_now')
     return out
