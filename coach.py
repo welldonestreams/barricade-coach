@@ -24,6 +24,14 @@ from functools import lru_cache
 
 WIN = 100000
 
+# Path-robustness: a lead is only as safe as the route is hard to block. A pawn
+# with a single shortest path can be forced onto a long detour by one wall; a
+# pawn with several distinct shortest routes is much harder to wall off. We cap
+# the distinct-route count here (more than this is just "safe").
+RESILIENCE_CAP = 3
+FRAGILITY_CP = 18.0   # centipawn penalty per fragility unit (when the other side can still wall)
+
+
 def parse_history(value):
     if isinstance(value, str):
         value = value.split(',') if value.strip() else []
@@ -160,6 +168,50 @@ def _shortest(ws, start, goal_row, blockers=()):
                     continue
                 seen.add((nc, nr)); q.append(((nc, nr), d+1))
     return None
+
+@lru_cache(maxsize=8192)
+def path_resilience(ws, start, goal_row, cap=RESILIENCE_CAP):
+    """Number of distinct files on a shortest path from `start` to the goal row.
+
+    Uses a 0-1 BFS in which vertical moves cost 1 and horizontal moves cost 0:
+    the "distance" is then the number of rows still to climb, and the number of
+    distinct files that lie on some shortest route measures how wide the
+    corridor is. An open board gives the full 9 files (capped at RESILIENCE_CAP
+    => "safe"); a pawn pinned in one file by walls gives 1 ("fragile"). Returns 0
+    if the goal is unreachable."""
+    adj = graph(frozenset(ws))
+    n = 81
+    def bfs01(sources):
+        dist = [99]*n
+        dq = deque()
+        for s in sources:
+            dist[s] = 0
+            dq.append(s)
+        while dq:
+            i = dq.popleft()
+            row_i = i // 9
+            di = dist[i]
+            for j in adj[i]:
+                w = 0 if j // 9 == row_i else 1
+                nd = di + w
+                if nd < dist[j]:
+                    dist[j] = nd
+                    if w == 0:
+                        dq.appendleft(j)
+                    else:
+                        dq.append(j)
+        return dist
+    to_goal = bfs01(list(range(goal_row*9, goal_row*9+9)))
+    s0 = start[1]*9 + start[0]
+    if to_goal[s0] == 99:
+        return 0
+    from_start = bfs01([s0])
+    d0 = to_goal[s0]
+    files = set()
+    for c in range(n):
+        if to_goal[c] != 99 and from_start[c] + to_goal[c] == d0:
+            files.add(c % 9)
+    return min(len(files), cap)
 
 # --- game state -----------------------------------------------------------
 class Game:
@@ -306,15 +358,34 @@ class Game:
         return m
 
     def eval_side(self, side):
-        """Heuristic centitempos, reserves and turn adjustment; lower is better.
-        Terminal results dominate all nonterminal scores."""
+        """Heuristic centipawns; lower is better. Terminal results dominate.
+
+        Terms, in order of weight:
+          1. race: 100 * (my distance - their distance) to goal. DOMINANT.
+          2. wall reserves: 8 * (their walls left - my walls left).
+          3. fragility: a lead only matters if my route is hard to block. A
+             pawn with a single shortest path (fragility 2) that the opponent
+             can still wall off is worth less than the raw race says, so we
+             discount my position by FRAGILITY_CP per missing alternative route
+             and reward the same weakness in the opponent. This is what makes
+             the coach spend a wall to protect its own corridor instead of
+             blindly advancing when "ahead". Gated on the other side having
+             walls left: with no walls in hand, nobody can be blocked further.
+          4. tempo: small side-to-move term."""
         if self.winner is not None:
             return -WIN if self.winner == side else WIN
         mine = self.race_distance(side)
         theirs = self.race_distance(1-side)
         if mine is None: mine = 99
         if theirs is None: theirs = 99
-        return 100 * (mine - theirs) + 8 * (self.remaining[1-side] - self.remaining[side]) + (-50 if self.to_move == side else 50)
+        score = 100 * (mine - theirs) + 8 * (self.remaining[1-side] - self.remaining[side])
+        if self.remaining[1-side] > 0:
+            my_res = path_resilience(frozenset(self.walls), self.pawns[side], GOALS[side])
+            score += FRAGILITY_CP * (RESILIENCE_CAP - my_res)
+        if self.remaining[side] > 0:
+            their_res = path_resilience(frozenset(self.walls), self.pawns[1-side], GOALS[1-side])
+            score -= FRAGILITY_CP * (RESILIENCE_CAP - their_res)
+        return score + (-50 if self.to_move == side else 50)
 
     def race_distance(self, side):
         """One legal pawn turn then wall-only distance: local jump heuristic."""

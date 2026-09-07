@@ -55,6 +55,7 @@
   const mine=n=>/^steak/i.test(n)||[GM_getValue('bc_me','steak2222'),...GM_getValue('bc_alts','').split(',')].some(m=>m.toLowerCase()===n.toLowerCase());
   let myColor=null, opponent='', gameId='', manual=false, enabled=true;
   let current=null, stableKey='', stableTicks=0, generation=0, request=null, lastAdvice=null;
+  let analyzedFor=null;
   let highlights=[], retryAt=0;
   const fetchedOpponents=new Set();
   const cache=new Map();
@@ -164,8 +165,50 @@
     label.style.cssText=`position:fixed;pointer-events:none;z-index:2147482999;left:${r.left}px;top:${r.top-25}px;background:#34d399;color:#052e16;padding:3px 6px;font:bold 13px system-ui;border-radius:4px`;
     document.body.append(box,label);highlights=[box,label];
   }
+  function recordGame(data, snapshot) {
+    if(!snapshot || !snapshot.h) return;
+    const me = GM_getValue('bc_me','steak2222');
+    const oppName = opponent || 'unknown';
+    const winnerName = data.winner === 0 ? 'red' : 'blue';
+    const red = myColor === 'red' ? me : oppName;
+    const blue = myColor === 'blue' ? me : oppName;
+    const p = new URLSearchParams({h: snapshot.h, winner: winnerName, red, blue});
+    GM_xmlhttpRequest({method:'GET', url: COACH + '/api/record?' + p, timeout: 4000,
+      onload(){}, onerror(){}, ontimeout(){}});
+  }
+  function analyzeGame(data, snapshot) {
+    if(!myColor) { invalidate('Game finished'); return; }
+    if(!snapshot || !snapshot.h) { invalidate('Game finished'); return; }
+    recordGame(data, snapshot);
+    const winnerName = data.winner === 0 ? 'red' : 'blue';
+    el('move').textContent = winnerName === myColor ? 'You won' : 'You lost';
+    el('status').textContent = 'Analyzing this game…';
+    el('why').textContent = '';
+    const p = new URLSearchParams({h: snapshot.h, side: myColor, depth: '2', seconds: '2'});
+    GM_xmlhttpRequest({method:'GET', url: COACH + '/api/analyze?' + p, timeout: 25000,
+      onload(res) {
+        try {
+          const d = JSON.parse(res.responseText);
+          if (res.status !== 200 || d.error) throw Error(d.error || 'analysis failed');
+          if (!d.blunders || !d.blunders.length) {
+            el('status').textContent = 'No clear blunders at depth 2 — clean game.';
+            return;
+          }
+          const lines = d.blunders.map(b =>
+            `ply ${b.ply}: you played ${b.move} — coach had ${b.best} (Δ${b.delta})`).join('\n');
+          el('status').textContent = `Top blunders (${d.side}):`;
+          el('why').textContent = lines;
+        } catch(e) {
+          el('status').textContent = 'Analysis unavailable.';
+          el('why').textContent = e.message;
+        }
+      },
+      onerror(){ el('status').textContent = 'Analysis unavailable.'; },
+      ontimeout(){ el('status').textContent = 'Analysis timed out.'; }
+    });
+  }
   function present(data,snapshot) {
-    if(data.winner!==null) {invalidate('Game finished');return;}
+    if(data.winner!==null) {analyzeGame(data,snapshot);return;}
     if(!myColor) {invalidate('Choose your color');return;}
     if(data.to_move!==myColor) {invalidate('Opponent to move');return;}
     const best=data.top[0]?.[1];if(!best)return;
@@ -202,12 +245,21 @@
   function tick() {
     if(!enabled)return;
     const url=location.pathname+location.search;
-    if(url!==gameId){gameId=url;manual=false;myColor=null;opponent='';cache.clear();current=null;stableKey='';stableTicks=0;invalidate('Reading this game');const saved=GM_getValue('bc_color_'+gameId,null);if(saved==='red'||saved==='blue')setColor(saved,true);}
+    if(url!==gameId){gameId=url;manual=false;myColor=null;opponent='';cache.clear();current=null;stableKey='';stableTicks=0;analyzedFor=null;invalidate('Reading this game');const saved=GM_getValue('bc_color_'+gameId,null);if(saved==='red'||saved==='blue')setColor(saved,true);}
     const board=readBoard();
     if(!board){if(current)invalidate('Waiting for a readable board');current=null;return;}
     const hist=readHistory(board),cards=readCards(board);
     if(!hist||!cards){if(current)invalidate('Waiting for the numbered move list and wall counts');current=null;clear();return;}
     const snapshot={...board,h:hist.join(','),red_left:cards.red.left,blue_left:cards.blue.left};
+    // Game over: a pawn on its goal rank. Detect it directly from the board so
+    // the post-game review fires no matter whose turn it was or whether the
+    // move list was fully readable.
+    const redOnGoal = /9$/.test(board.red), blueOnGoal = /1$/.test(board.blue);
+    if((redOnGoal||blueOnGoal) && analyzedFor!==gameId) {
+      analyzedFor=gameId;
+      analyzeGame({winner: redOnGoal ? 0 : 1}, snapshot);
+      return;
+    }
     const key=positionKey(snapshot);current=snapshot;
     if(key!==stableKey){stableKey=key;stableTicks=0;invalidate('Checking board…');return;}
     stableTicks++;
