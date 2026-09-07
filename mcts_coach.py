@@ -8,7 +8,8 @@ import time
 import os
 import coach as c
 
-def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=None):
+def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=None,
+           root_priors=None):
     if not isinstance(time_limit, (int,float)) or not math.isfinite(time_limit) or not 0 < time_limit <= 60:
         raise ValueError('MCTS seconds must be greater than 0 and at most 60')
     if not isinstance(rollouts, int) or not 2 <= rollouts <= 200000:
@@ -79,6 +80,8 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
         if remaining <= 0:
             return dict(candidates=[], simulations=0, timed_out=True)
         payload = dict(history=g.history, rollouts=rollouts, seconds=max(.001, remaining-.08), seed=seed_w)
+        if root_priors:
+            payload.update(root_priors=root_priors,cpuct=1.25)
         interrupted = False
         try:
             completed = subprocess.run([node, adapter], input=json.dumps(payload),
@@ -120,7 +123,9 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
     candidates = []
     for mv, (visits, wr_sum) in merged.items():
         if mv in allowed and visits > 0:
-            candidates.append(dict(move=mv, visits=visits, rollout_win_rate=wr_sum / visits))
+            row=dict(move=mv, visits=visits, rollout_win_rate=wr_sum / visits)
+            if root_priors and mv in root_priors:row['policy_prior']=root_priors[mv]
+            candidates.append(row)
     candidates.sort(key=lambda r: (-r['visits'], r['move']))
     if not candidates:
         fallback = min(allowed, key=lambda mv: _value(g, mv, side))
@@ -130,7 +135,8 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
                       principal_variation=[candidates[0]['move']], candidates=candidates, fallback=False)
     result.update(simulations=total_sims, nodes=total_sims, elapsed=time.monotonic()-started,
                   timed_out=any_timed_out, filtered_immediate_losses=len(legal)-len(safe),
-                  workers=workers)
+                      workers=workers, policy_guided=bool(root_priors),
+                      policy_value_guided=bool(root_priors))
     return result
 
 

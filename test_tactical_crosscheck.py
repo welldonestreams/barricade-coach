@@ -42,7 +42,7 @@ class TacticalCrosscheckTests(unittest.TestCase):
 
     def test_crosscheck_uses_only_remaining_total_budget(self):
         clock=[0.0]; budgets=[]
-        def sample(*args):
+        def sample(*args,**kwargs):
             budgets.append(args[2]); clock[0]+=args[2]
             return mcts(CASES[0]['mcts_move'])
         def tactical(*args, **kwargs):

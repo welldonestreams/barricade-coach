@@ -430,6 +430,12 @@ def _search_game(g, side, depth, time_limit, started, deadline):
     if g.winner is not None:
         return dict(scored=[], depth=0, nodes=0, elapsed=time.monotonic()-started, timed_out=False, winner=g.winner, principal_variation=[])
     nodes = 0
+    transpositions = {}
+    tt_hits = 0
+    def state_key(state):
+        """History-independent board key for exact completed-depth reuse."""
+        return (state.pawns[RED], state.pawns[BLUE], tuple(sorted(state.walls)),
+                state.remaining[RED], state.remaining[BLUE], state.to_move)
     def check_time():
         if time.monotonic() >= deadline:
             raise SearchTimeout
@@ -452,15 +458,21 @@ def _search_game(g, side, depth, time_limit, started, deadline):
         out.sort(key=lambda x: (x[0] if state.to_move == side else -x[0], len(x[1]), x[1]))
         return out
     def minimax(state, left, alpha, beta, ply):
-        nonlocal nodes
+        nonlocal nodes, tt_hits
         check_time()
         nodes += 1
         if state.winner is not None:
             return (-WIN + ply if state.winner == side else WIN - ply), []
         if left == 0:
             return state.eval_side(side), []
+        key=(state_key(state),left)
+        cached=transpositions.get(key)
+        if cached is not None:
+            tt_hits += 1
+            return cached
         maximizing = state.to_move != side
         value, line = (-math.inf if maximizing else math.inf), []
+        complete=True
         for _, mv, child in children(state):
             v, tail = minimax(child, left-1, alpha, beta, ply+1)
             if (v > value if maximizing else v < value):
@@ -470,7 +482,11 @@ def _search_game(g, side, depth, time_limit, started, deadline):
             else:
                 beta = min(beta, value)
             if alpha >= beta:
+                complete=False
                 break
+        # Alpha-beta cutoffs are bounds. Cache only complete exact results.
+        if complete:
+            transpositions[key]=(value,line)
         return value, line
     fallback = min(g.pawn_moves(side), key=lambda x: (shortest(g.walls, x[1], GOALS[side]), x[1]))[1]
     fallback = f'{LETTERS[fallback[0]]}{fallback[1]+1}'
@@ -489,7 +505,8 @@ def _search_game(g, side, depth, time_limit, started, deadline):
             roots.sort(key=lambda x: order[x[1]])
     except SearchTimeout:
         timed_out = True
-    return dict(scored=scored, depth=completed, nodes=nodes, elapsed=time.monotonic()-started,
+    return dict(scored=scored, depth=completed, nodes=nodes, tt_hits=tt_hits,
+                elapsed=time.monotonic()-started,
                 timed_out=timed_out, winner=None, principal_variation=pv)
 
 def best_moves(history, side, n=3, depth=2, verbose=True, time_limit=5.0):

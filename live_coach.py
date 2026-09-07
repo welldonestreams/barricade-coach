@@ -7,7 +7,7 @@ import advice
 import learning
 from pathlib import Path
 
-BUILD = hashlib.sha256(b"".join(Path(__file__).with_name(n).read_bytes() for n in ("coach.py", "advice.py", "mcts_coach.py", "endgame.py", "live_coach.py"))).hexdigest()[:12]
+BUILD = hashlib.sha256(b"".join(Path(__file__).with_name(n).read_bytes() for n in ("coach.py", "advice.py", "mcts_coach.py", "policy_value.py", "endgame.py", "live_coach.py"))).hexdigest()[:12]
 
 def trace(params, payload):
     """Bounded local audit trail; never sends game history to an external service."""
@@ -106,8 +106,8 @@ def query(params, record_trace=True):
     if engine not in ('mcts','python'):
         engine='mcts'
     # The opening is cheap to decide; give the search the full budget otherwise.
-    # MCTS needs a little time to spin up its Node subprocess, so never squeeze it
-    # below ~1.2s; the opening book covers the first few plies regardless.
+    # MCTS needs a little time to spin up its Node subprocess, so give the
+    # uncontested opening a short but meaningful search rather than a lookup.
     early=not g.walls and all(p[0]==4 for p in g.pawns.values()) and abs(g.pawns[0][1]-g.pawns[1][1])>3
     if engine=='mcts':
         budget=min(seconds, 1.2) if early else seconds
@@ -131,7 +131,7 @@ def query(params, record_trace=True):
                 winner=g.winner, request_id=params.get('request_id'),
                 search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation')},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
-    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','score_units') if k in result})
+    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
     if record_trace:
         trace(params,payload)
     return payload

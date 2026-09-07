@@ -123,12 +123,12 @@ The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
 
 
-## Firefox / Tampermonkey overlay (1.2)
+## Firefox / Tampermonkey overlay (1.3)
 
 Run START-COACH.cmd, then replace the existing Tampermonkey script with
 `overlay/barricade-live-coach.user.js` (also served at
 http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
-Do not run the old and new scripts together. Version 1.2 appears in the panel.
+Do not run the old and new scripts together. Version 1.3 appears in the panel.
 
 
 The overlay independently checks the numbered move list, pawn squares, placed
@@ -174,6 +174,35 @@ promotion behavior until restarted. Tests: `python -m unittest -v`, including No
 regressions. The local `/overlay-fixture` page exercises the screenshot position
 and rotation without playing a real match.
 
+## Gated policy/value improvement
+
+The dependency-free learning pipeline uses sparse board/action features, so it
+runs on the existing Python installation. `teacher_data.py` samples legal archive
+positions and saves only completed full-width search targets. `train_policy.py`
+learns both a legal-move policy and an outcome value into an isolated candidate.
+The value and policy guide MCTS root exploration; legality and tactical checks
+still control the final response.
+
+`arena.py` plays a candidate against unguided MCTS and optional frozen models from
+the same held-out starts with colors exchanged. It records outcomes, illegal moves,
+latency, model/code hashes, and a paired confidence bound. `--promote` writes the
+live champion only with at least 100 pairs, a lower 95% score bound above 50%, zero
+illegal moves, and p95 under five seconds. Failed candidates remain isolated.
+
+`league_selfplay.py` mixes the promoted champion, raw MCTS, and supplied frozen
+models, writing policy distributions plus final outcomes without modifying live
+advice. `improve.py` connects teacher generation, training, arena evaluation and
+league rounds, stopping at the first failed promotion. A production-sized run is:
+
+`python improve.py --rounds 3 --positions 2000 --teacher-depth 3 --teacher-seconds 8 --arena-pairs 100`
+
+`RUN-IMPROVEMENT.cmd` runs that production configuration. Start it after the
+leaderboard harvest finishes and when the live coach is not needed; teacher and
+arena searches intentionally use substantial CPU. This may run for many hours.
+`measure_real_games.py` reports archived steak-account
+results only when the game also has a local versioned advice trace. The reported
+rating band and build are the basis for assessing an 85% target.
+
 
 ## Safeguards after the 54ea0f9 review
 
@@ -189,7 +218,7 @@ claim. The one-reply safety check also detects unavoidable next-turn goals witho
 running MCTS. These solve board outcomes, not clocks or leaderboard performance.
 
 Run START-COACH.cmd to reuse/start a compatible server on 8810 or 8811. Overlay
-1.2 probes both ports and requires live_protocol 5, so an older elevated server
+1.3 probes both ports and requires live_protocol 6, so an older elevated server
 cannot accidentally answer its requests. The ready-to-install copy is also in
 Downloads. Firefox installation still requires replacing the existing Tampermonkey
 script and reloading the page; do not enable two versions together.

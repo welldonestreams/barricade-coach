@@ -44,16 +44,23 @@ def approved_prior(game, engine):
 
 
 def advise(history, side=None, depth=2, seconds=5.0, engine='python',
-           opp_name=None, opp_color=None, rollouts=60000, seed=None):
+           opp_name=None, opp_color=None, rollouts=60000, seed=None,
+           policy_model=None):
     started=time.monotonic();deadline=started+seconds
     hist=list(history);game=c.Game(hist)
     side=game.to_move if side is None else side
     if engine=='mcts':
         import mcts_coach
+        import policy_value
+        model=policy_value.load_champion() if policy_model is None else policy_model
+        priors=policy_value.search_priors(model,game) if model else None
         reserve=min(1.5, seconds*.35) if game.walls and any(game.remaining.values()) else 0
         budget=max(.001, deadline-time.monotonic()-reserve)
-        result=(mcts_coach.search(hist,side,budget) if rollouts==60000 and seed is None
-                else mcts_coach.search(hist,side,budget,rollouts,seed))
+        result=(mcts_coach.search(hist,side,budget,root_priors=priors)
+                if rollouts==60000 and seed is None else
+                mcts_coach.search(hist,side,budget,rollouts,seed,root_priors=priors))
+        result['policy_model']=bool(model)
+        result['policy_model_id']=policy_value.model_id(model) if model else None
     elif engine=='python':
         result=c.search(hist,side,depth,max(.001,seconds-.1))
     else:

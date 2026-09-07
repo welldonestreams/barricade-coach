@@ -101,5 +101,9 @@ general search. Familiarity with an opponent is not evidence a weaker move works
 4. Train and benchmark a compact policy/value candidate.
 5. Add league self-play and promote only measured improvements.
 
-Steps 2-5 are proposed next work, not features completed by this patch. Archive
-size, worker count and simulated win rates are not substitutes for these results.
+The code paths for steps 2-5 are now implemented by `teacher_data.py`,
+`train_policy.py`, `arena.py`, `league_selfplay.py`, and `improve.py`. They have
+passed a small end-to-end workflow test. Production training and the minimum
+100-pair promotion arena remain to be run; no candidate has been promoted and no
+strength gain is claimed yet. Archive size, worker count and simulated win rates
+are not substitutes for those results.

@@ -58,10 +58,30 @@ function run(input, emit) {
   console.log = () => {}; // Upstream diagnostics must not corrupt JSON output.
   const tree = new MonteCarloTreeSearch(game, 0.2);
   const started = Date.now();
+  // A promoted policy may guide root exploration. It never masks legal moves
+  // and never supplies outcome counts. Deeper nodes retain upstream UCT.
+  if (input.root_priors && typeof input.root_priors === 'object') {
+    tree.search(2); // visit then expand the root
+    let total = 0;
+    for (const child of tree.root.children) total += Math.max(0, Number(input.root_priors[encode(child.move)]) || 0);
+    if (total > 0) {
+      for (const child of tree.root.children) child.policyPrior = Math.max(0, Number(input.root_priors[encode(child.move)]) || 0) / total;
+      const original = Object.getOwnPropertyDescriptor(MNode.prototype, 'uct').get;
+      const cpuct = Math.max(0.1, Math.min(5, Number(input.cpuct) || 1.25));
+      Object.defineProperty(MNode.prototype, 'uct', {configurable:true, get:function() {
+        if (this.parent && this.parent.parent === null && this.policyPrior !== undefined) {
+          const q = this.numSims ? this.numWins / this.numSims : 0;
+          return q + cpuct * this.policyPrior * Math.sqrt(Math.max(1, this.parent.numSims)) / (1 + this.numSims);
+        }
+        return original.call(this);
+      }});
+    }
+  }
   while (tree.totalNumOfSimulations < input.rollouts && Date.now()-started < input.seconds*1000) {
     tree.search(Math.min(128, input.rollouts-tree.totalNumOfSimulations));
     const candidates = tree.root.children.filter(n=>n.numSims>0).map(n=>({
-      move:encode(n.move), visits:n.numSims, rollout_win_rate:n.winRate
+      move:encode(n.move), visits:n.numSims, rollout_win_rate:n.winRate,
+      policy_prior:n.policyPrior
     })).sort((a,b)=>b.visits-a.visits || a.move.localeCompare(b.move));
     // Preserve a completed batch if the parent must terminate a long rollout.
     emit({candidates, simulations:tree.totalNumOfSimulations, elapsed:(Date.now()-started)/1000});
