@@ -240,8 +240,10 @@ class MctsTests(unittest.TestCase):
             self.assertEqual(d['legal'],sorted(g.moves(g.to_move)),h)
     def test_mcts_seed_legal_and_terminal(self):
         h='e2,e8,e3,e7,e4,e6'
-        a=mcts_coach.search(h,rollouts=256,time_limit=5,seed=10)
-        b=mcts_coach.search(h,rollouts=256,time_limit=5,seed=10)
+        # workers=1 pins the single-tree path this test is about: a fixed seed
+        # must reproduce the exact rollout count and move ranking.
+        a=mcts_coach.search(h,rollouts=256,time_limit=5,seed=10,workers=1)
+        b=mcts_coach.search(h,rollouts=256,time_limit=5,seed=10,workers=1)
         self.assertEqual(a['scored'],b['scored']); self.assertEqual(a['simulations'],256)
         for _,mv in a['scored']: c.Game(h).apply(mv)
         self.assertEqual(mcts_coach.search(RACE)['scored'][0][1],'e1')
