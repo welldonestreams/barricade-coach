@@ -16,6 +16,13 @@ import policy_value as pv
 
 ROOT=Path(__file__).resolve().parent
 
+# The gate's repair check MUST use positions disjoint from the training set.
+# tactical-loss-cases.json / recent-loss-cases.json are 8x-weighted TRAINING
+# examples (see improve.py inputs and train_policy.py); testing on them would
+# reward memorization, not generalization. repair-gate-cases.json is held out
+# from training entirely and reserved for this gate only.
+GATE_CASES = ROOT/'study'/'repair-gate-cases.json'
+
 
 def decision(g,seconds,seed,model):
     started=time.monotonic()
@@ -134,8 +141,9 @@ def main():
     ap.add_argument('--workers',type=int,default=2)
     ap.add_argument('--frozen',nargs='*',default=[],help='older policy models included in the arena')
     ap.add_argument('--player-holdout-only',action='store_true')
-    ap.add_argument('--regression',nargs='*',default=[ROOT/'study'/'tactical-loss-cases.json',
-                                                        ROOT/'study'/'recent-loss-cases.json'])
+    # The gate's repair check MUST use positions disjoint from the training set
+    # (see GATE_CASES above for the full rationale).
+    ap.add_argument('--regression',nargs='*',default=[GATE_CASES])
     args=ap.parse_args();model=pv.load(args.candidate)
     starts=holdout_positions(args.targets,args.pairs,args.seed,args.player_holdout_only)
     if len(starts)<args.pairs:ap.error(f'Need {args.pairs} unique held-out starts; found {len(starts)}')

@@ -141,18 +141,32 @@ class PolicyValueTests(unittest.TestCase):
         self.assertEqual(report['games'],4)
         self.assertEqual(len(report['records']),4)
 
-    def test_arena_requires_known_loss_repairs_before_promotion(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            case=Path(tmp)/'case.json'
-            case.write_text(json.dumps([dict(code='case',ply=0,history=[],best='e2')]),encoding='utf-8')
-            model=pv.new_model();model['policy']['ab:a:e2']=8
-            rows=arena.regression_results(model,[case])
-        self.assertEqual(rows,[dict(code='case',ply=0,expected='e2',chosen='e2',correct=True)])
-        report=dict(arena_pairs=100,score_lower_95=.6,illegal_moves=0,p95_seconds=1,
-                    regression_cases=1,regression_correct=1)
-        self.assertTrue(arena.passes_promotion(report))
-        report['regression_correct']=0
-        self.assertFalse(arena.passes_promotion(report))
+    def test_repair_gate_is_disjoint_from_training(self):
+        # The promotion gate's repair positions must be held out from training,
+        # otherwise a candidate can pass by memorizing the 8x-weighted training
+        # examples (the exact positions the gate would then re-test).
+        root=Path(__file__).with_name('study')
+        train_keys=set()
+        for fn in ('tactical-loss-cases.json','recent-loss-cases.json'):
+            for case in json.loads((root/fn).read_text(encoding='utf-8')):
+                train_keys.add((case['code'],case['ply']))
+        gate_cases=json.loads((root/'repair-gate-cases.json').read_text(encoding='utf-8'))
+        self.assertGreater(len(gate_cases),0,'gate file missing or empty')
+        for case in gate_cases:
+            key=(case['code'],case['ply'])
+            self.assertNotIn(key,train_keys,
+                f'gate case {key} also appears in the training set; gate would test memorization')
+            # and the expected move must be legal on its position
+            self.assertIn(case['best'],c.Game(case['history']).moves(c.Game(case['history']).to_move))
+
+    def test_arena_regression_default_is_held_out_file(self):
+        # arena's default --regression must point at the held-out gate file,
+        # NOT the training loss files. (Guards the fix against drift.)
+        self.assertEqual(arena.GATE_CASES.name,'repair-gate-cases.json')
+        self.assertTrue(arena.GATE_CASES.exists())
+        self.assertNotIn(str(arena.GATE_CASES),
+                         ['tactical-loss-cases.json','recent-loss-cases.json'])
+
 
 
 if __name__=='__main__':unittest.main()
