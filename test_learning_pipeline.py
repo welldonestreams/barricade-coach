@@ -179,6 +179,11 @@ class PolicyValueTests(unittest.TestCase):
             path.write_text('\n'.join(json.dumps(row) for row in rows),encoding='utf-8')
             self.assertEqual(arena.holdout_positions([path],1,1,player_only=True),[['e2']])
 
+    def test_repair_gate_failure_skips_expensive_arena(self):
+        self.assertTrue(arena.repair_gate_passes([dict(correct=True)]))
+        self.assertFalse(arena.repair_gate_passes([dict(correct=True),dict(correct=False)]))
+        self.assertFalse(arena.repair_gate_passes([]))
+
     def test_arena_regression_default_is_held_out_file(self):
         # arena's default --regression must point at the held-out gate file,
         # NOT the training loss files. (Guards the fix against drift.)

@@ -112,6 +112,10 @@ def passes_promotion(report):
             and report['regression_correct']==report['regression_cases'])
 
 
+def repair_gate_passes(regressions):
+    return bool(regressions) and all(row['correct'] for row in regressions)
+
+
 def evaluate(model,starts,seconds,seed,baselines=None,workers=2):
     baselines=baselines or [('raw-mcts',False)]
     tasks=[(baseline_name,baseline,i,hist) for baseline_name,baseline in baselines
@@ -149,19 +153,32 @@ def main():
     # (see GATE_CASES above for the full rationale).
     ap.add_argument('--regression',nargs='*',default=[GATE_CASES])
     args=ap.parse_args();model=pv.load(args.candidate)
-    starts=holdout_positions(args.targets,args.pairs,args.seed,args.player_holdout_only)
-    if len(starts)<args.pairs:ap.error(f'Need {args.pairs} unique held-out starts; found {len(starts)}')
-    baselines=[('raw-mcts',False)]+[(str(path),pv.load(path)) for path in args.frozen]
-    report=evaluate(model,starts,args.seconds,args.seed,baselines,args.workers)
-    report.update(candidate_sha256=hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),
-                  policy_code_sha256=pv.code_hash(),seconds=args.seconds,
-                  workers=args.workers,
-                  baselines=[name for name,_ in baselines],
-                  promoted=False,limitation='Frozen unguided MCTS field; no human Elo estimate')
     regressions=regression_results(model,args.regression)
-    report.update(regression_cases=len(regressions),
-                  regression_correct=sum(row['correct'] for row in regressions),
-                  regressions=regressions)
+    repair_fields=dict(regression_cases=len(regressions),
+                       regression_correct=sum(row['correct'] for row in regressions),
+                       regressions=regressions)
+    # This is an independent, deterministic candidate check.  Running a costly
+    # 200-game arena cannot rehabilitate a model that already fails a required
+    # repair.  Keep a complete failed report for auditability and save the CPU
+    # for generating the next teacher/candidate.
+    if not repair_gate_passes(regressions):
+        report=dict(arena_pairs=0,games=0,score=0.0,score_lower_95=0.0,
+                    p95_seconds=0.0,illegal_moves=0,records=[],
+                    candidate_sha256=hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),
+                    policy_code_sha256=pv.code_hash(),seconds=args.seconds,workers=args.workers,
+                    baselines=['raw-mcts'],promoted=False,passed=False,
+                    skipped_arena='held-out repair gate failed',
+                    limitation='Frozen unguided MCTS field; no human Elo estimate',**repair_fields)
+    else:
+        starts=holdout_positions(args.targets,args.pairs,args.seed,args.player_holdout_only)
+        if len(starts)<args.pairs:ap.error(f'Need {args.pairs} unique held-out starts; found {len(starts)}')
+        baselines=[('raw-mcts',False)]+[(str(path),pv.load(path)) for path in args.frozen]
+        report=evaluate(model,starts,args.seconds,args.seed,baselines,args.workers)
+        report.update(candidate_sha256=hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),
+                      policy_code_sha256=pv.code_hash(),seconds=args.seconds,
+                      workers=args.workers,
+                      baselines=[name for name,_ in baselines],promoted=False,
+                      limitation='Frozen unguided MCTS field; no human Elo estimate',**repair_fields)
     passed=passes_promotion(report)
     report['passed']=passed
     if args.promote and passed:

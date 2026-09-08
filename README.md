@@ -195,7 +195,8 @@ live champion only with at least 100 pairs, a lower 95% score bound above 50%, z
 illegal moves, p95 under five seconds, and all 12 repair choices correct. The repair
 positions live in `study/repair-gate-cases.json`; `train_policy.py` excludes their
 full histories from every input source, and the arena excludes them from its paired
-starts. This prevents both training and arena leakage from common opening states.
+starts. A candidate that misses a repair is rejected before the expensive paired
+arena starts. This prevents both training and arena leakage from common opening states.
 Failed candidates remain isolated.
 
 `league_selfplay.py` mixes the promoted champion, raw MCTS, and supplied frozen
