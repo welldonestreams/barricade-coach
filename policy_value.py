@@ -74,7 +74,9 @@ def state_features(g, side=None):
 
 def action_features(g, move, side=None):
     side=g.to_move if side is None else side
-    opp=g.pawns[1-side]
+    mine=g.pawns[side];opp=g.pawns[1-side]
+    my_rank=mine[1]+1 if side==c.RED else 9-mine[1]
+    op_rank=opp[1]+1 if side==c.RED else 9-opp[1]
     norm=normalize_move(move,side)
     out=[f'a:{norm}',f'type:{"pawn" if len(move)==2 else move[0]}',
          f'afile:{norm[-2] if len(norm)==3 else norm[0]}',f'arank:{norm[-1]}']
@@ -85,6 +87,14 @@ def action_features(g, move, side=None):
                 f'op_route_change:{max(-4,min(4,after_op-before_op))}'))
     if len(move)==3:
         net=(after_op-before_op)-(after_me-before_me)
+        wall_file=c.LETTERS.index(norm[1]);wall_rank=int(norm[2])
+        # Coordinates relative to both pawns let a sparse policy distinguish a
+        # wall cutting the opponent's current lane from an otherwise identical
+        # wall far away.  They are color-normalized with ``norm`` above.
+        out.extend((f'wall_file_from_opp:{max(-8,min(8,wall_file-opp[0]))}',
+                    f'wall_rank_from_opp:{max(-8,min(8,wall_rank-op_rank))}',
+                    f'wall_file_from_me:{max(-8,min(8,wall_file-mine[0]))}',
+                    f'wall_rank_from_me:{max(-8,min(8,wall_rank-my_rank))}'))
         # Wall-placement quality: does it cut the opponent's number of distinct
         # shortest-path routes (path flexibility), not just lengthen one route?
         # This is the defensive-wall concept top players use and what the coach
