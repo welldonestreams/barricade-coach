@@ -84,28 +84,39 @@ def regression_results(model, paths):
     separate promise: a promoted model must retain the tactical repairs made
     after a real bad recommendation.  Use ``search_priors`` because that is
     exactly the policy/value signal passed to live MCTS at the root.
+
+    Fail closed: any missing file, malformed case, or case whose expected
+    move is illegal on its own position raises instead of being skipped --
+    a silently skipped case would let a candidate pass without being tested
+    on every required repair.
     """
     rows=[]
     for path in paths:
+        path=Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f'repair gate case file missing: {path}')
         try:
-            cases=json.loads(Path(path).read_text(encoding='utf-8'))
-        except (OSError,json.JSONDecodeError):
-            continue
+            cases=json.loads(path.read_text(encoding='utf-8'))
+        except (OSError,json.JSONDecodeError) as e:
+            raise ValueError(f'unreadable repair gate case file {path}: {e}') from e
         if not isinstance(cases,list):
-            continue
-        for case in cases:
-            if not isinstance(case,dict) or not case.get('best'):
-                continue
+            raise ValueError(f'repair gate case file {path} is not a JSON list')
+        for i,case in enumerate(cases):
+            if not isinstance(case,dict) or not case.get('best') or not isinstance(case.get('history'),list):
+                raise ValueError(f'repair gate: malformed case #{i} in {path}: {case!r}')
+            tag=f"{case.get('code')} ply {case.get('ply')}"
             try:
                 game=c.Game(case['history'])
-            except (KeyError,TypeError,ValueError):
-                continue
+            except (KeyError,TypeError,ValueError) as e:
+                raise ValueError(f'repair gate: case {tag} history invalid: {e}') from e
             legal=game.moves(game.to_move);expected=case['best']
             if expected not in legal:
-                continue
+                raise ValueError(f'repair gate: case {tag} expects {expected}, illegal after '
+                                 f'{len(case["history"])} plies (off-by-one history?)')
             acceptable=case.get('acceptable',[expected])
-            if not isinstance(acceptable,list) or not acceptable or any(move not in legal for move in acceptable):
-                continue
+            if (not isinstance(acceptable,list) or not acceptable
+                    or any(move not in legal for move in acceptable)):
+                raise ValueError(f'repair gate: case {tag} acceptable set {acceptable!r} invalid')
             priors=pv.search_priors(model,game,legal)
             chosen=max(priors,key=priors.get) if priors else None
             rows.append(dict(code=case.get('code'),ply=case.get('ply'),

@@ -9,13 +9,28 @@ CASES=ROOT/'study'/'repair-gate-cases.json'
 
 @lru_cache(maxsize=1)
 def rows():
-    """Return well-formed held-out repair rows, or an empty tuple on I/O failure."""
+    """Return validated held-out repair rows.
+
+    Fail closed: a missing/unreadable gate file or a malformed gate case
+    raises instead of being silently skipped. A skipped case would let a
+    candidate pass the promotion gate without being tested on every required
+    repair, and would quietly disable the training-side leakage filter.
+    """
+    if not CASES.exists():
+        raise FileNotFoundError(f'repair gate file missing: {CASES}')
     try:
         data=json.loads(CASES.read_text(encoding='utf-8'))
-    except (OSError,json.JSONDecodeError):
-        return ()
-    return tuple(row for row in data if isinstance(row,dict)
-                 and isinstance(row.get('history'),list) and row.get('best')) if isinstance(data,list) else ()
+    except (OSError,json.JSONDecodeError) as e:
+        raise ValueError(f'unreadable repair gate file {CASES}: {e}') from e
+    if not isinstance(data,list):
+        raise ValueError(f'repair gate file {CASES} is not a JSON list')
+    out=[]
+    for i,row in enumerate(data):
+        if (not isinstance(row,dict) or not isinstance(row.get('history'),list)
+                or not isinstance(row.get('best'),str) or not row['best']):
+            raise ValueError(f'malformed repair gate case #{i} in {CASES}: {row!r}')
+        out.append(row)
+    return tuple(out)
 
 
 @lru_cache(maxsize=1)

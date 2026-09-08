@@ -8,6 +8,7 @@ import arena
 import coach as c
 import mcts_coach
 import policy_value as pv
+import repair_gate
 import teacher_data
 import train_policy
 import measure_real_games
@@ -154,7 +155,7 @@ class PolicyValueTests(unittest.TestCase):
         # examples (the exact positions the gate would then re-test).
         root=Path(__file__).with_name('study')
         train_keys=set()
-        for fn in ('tactical-loss-cases.json','recent-loss-cases.json'):
+        for fn in ('tactical-loss-cases.json','recent-loss-cases.json','training-loss-cases.json'):
             for case in json.loads((root/fn).read_text(encoding='utf-8')):
                 train_keys.add((case['code'],case['ply']))
         gate_cases=json.loads((root/'repair-gate-cases.json').read_text(encoding='utf-8'))
@@ -193,6 +194,48 @@ class PolicyValueTests(unittest.TestCase):
         self.assertTrue(arena.repair_gate_passes([dict(correct=True)]))
         self.assertFalse(arena.repair_gate_passes([dict(correct=True),dict(correct=False)]))
         self.assertFalse(arena.repair_gate_passes([]))
+
+    def test_arena_repair_gate_fails_closed(self):
+        # A candidate must never pass the gate with a case silently skipped:
+        # malformed cases, illegal expected moves, and missing case files all
+        # raise instead of dropping the case from the count.
+        model=pv.new_model()
+        with tempfile.TemporaryDirectory() as tmp:
+            good=Path(tmp)/'good.json'
+            good.write_text(json.dumps([dict(code='x',ply=1,history=['e2'],best='e8')]),encoding='utf-8')
+            rows=arena.regression_results(model,[good])
+            self.assertEqual(len(rows),1)
+            bad=Path(tmp)/'bad.json'
+            bad.write_text(json.dumps([dict(code='x',ply=1,history=['e2'],best='zz9')]),encoding='utf-8')
+            with self.assertRaises(ValueError):
+                arena.regression_results(model,[bad])
+            ugly=Path(tmp)/'ugly.json'
+            ugly.write_text(json.dumps([dict(nope=True)]),encoding='utf-8')
+            with self.assertRaises(ValueError):
+                arena.regression_results(model,[ugly])
+            with self.assertRaises(FileNotFoundError):
+                arena.regression_results(model,[Path(tmp)/'missing.json'])
+
+    def test_repair_gate_rows_fail_closed_on_bad_file(self):
+        # rows()/histories() silently returning () on a broken gate file would
+        # disable the training-side leakage filter. They must raise instead.
+        with tempfile.TemporaryDirectory() as tmp,patch.object(repair_gate,'CASES',Path(tmp)/'cases.json'):
+            repair_gate.rows.cache_clear();repair_gate.histories.cache_clear()
+            repair_gate.CASES.write_text(json.dumps([dict(code='ok',history=['e2'],best='e8')]),encoding='utf-8')
+            self.assertEqual(len(repair_gate.rows()),1)
+            repair_gate.rows.cache_clear()
+            repair_gate.CASES.write_text(json.dumps([dict(no='history')]),encoding='utf-8')
+            with self.assertRaises(ValueError):
+                repair_gate.rows()
+            repair_gate.rows.cache_clear()
+            repair_gate.CASES.write_text('not json',encoding='utf-8')
+            with self.assertRaises(ValueError):
+                repair_gate.rows()
+            repair_gate.rows.cache_clear()
+            repair_gate.CASES.unlink()
+            with self.assertRaises(FileNotFoundError):
+                repair_gate.rows()
+            repair_gate.rows.cache_clear()
 
     def test_arena_regression_default_is_held_out_file(self):
         # arena's default --regression must point at the held-out gate file,
