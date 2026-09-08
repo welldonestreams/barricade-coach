@@ -205,18 +205,81 @@ class PolicyValueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             good=Path(tmp)/'good.json'
             good.write_text(json.dumps([dict(code='x',ply=1,history=['e2'],best='e8')]),encoding='utf-8')
-            rows=arena.regression_results(model,[good])
+            rows=arena.repair_screen(model,[good])
             self.assertEqual(len(rows),1)
             bad=Path(tmp)/'bad.json'
             bad.write_text(json.dumps([dict(code='x',ply=1,history=['e2'],best='zz9')]),encoding='utf-8')
             with self.assertRaises(ValueError):
-                arena.regression_results(model,[bad])
+                arena.repair_screen(model,[bad])
             ugly=Path(tmp)/'ugly.json'
             ugly.write_text(json.dumps([dict(nope=True)]),encoding='utf-8')
             with self.assertRaises(ValueError):
-                arena.regression_results(model,[ugly])
+                arena.repair_screen(model,[ugly])
             with self.assertRaises(FileNotFoundError):
-                arena.regression_results(model,[Path(tmp)/'missing.json'])
+                arena.repair_screen(model,[Path(tmp)/'missing.json'])
+
+    def test_repair_screen_thresholds_are_frozen_predicates(self):
+        # acceptable in top-10 OR >=5% prior mass passes the raw screen;
+        # deeper ranks with negligible mass fail it.
+        legal_moves = [m for m in c.Game(['e2']).moves(c.BLUE)]
+        fake = {m: 0.001 for m in legal_moves}
+        fake['e8'] = 0.9
+        case = dict(code='x', ply=2, history=['e2'], best='e8', acceptable=['e8'])
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(pv, 'search_priors', return_value=fake):
+            path = Path(tmp)/'c.json'
+            path.write_text(json.dumps([case]), encoding='utf-8')
+            rows = arena.repair_screen(pv.new_model(), [path])
+            self.assertTrue(rows[0]['passed'])
+            self.assertEqual(rows[0]['raw_rank'], 1)
+        # expected at rank 40 with 0.001 mass: fails the frozen screen
+        fake2 = {m: 0.001 for m in legal_moves}
+        fake2['e8'] = 0.0
+        fake2[legal_moves[0]] = 0.9
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(pv, 'search_priors', return_value=fake2):
+            path = Path(tmp)/'c.json'
+            path.write_text(json.dumps([case]), encoding='utf-8')
+            rows = arena.repair_screen(pv.new_model(), [path])
+            self.assertFalse(rows[0]['passed'])
+
+    def test_live_repair_check_records_and_parity(self):
+        # Patch the production path: guided acceptable on all seeds beats an
+        # unguided baseline that misses one; parity + records are checked.
+        legal = [m for m in c.Game(['e2']).moves(c.BLUE)]
+        acc = ['e8']
+        def fake_advise(hist, side, seconds, seed, policy_model, **kw):
+            ok = policy_model is not None or seed != arena.REPAIR_SEEDS[-1]
+            return dict(scored=[(-10, 'e8' if ok else legal[0])], simulations=500,
+                        elapsed=0.01, fallback=False, timed_out=True,
+                        policy_model_id='m1' if policy_model else None)
+        case = dict(code='x', ply=2, history=['e2'], best='e8', acceptable=acc)
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(arena.advice, 'advise', side_effect=fake_advise):
+            path = Path(tmp)/'c.json'
+            path.write_text(json.dumps([case]), encoding='utf-8')
+            rows = arena.live_repair_check(pv.new_model(), [path],
+                                           seconds=0.1, seeds=arena.REPAIR_SEEDS,
+                                           workers=2)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]['correct'])
+        self.assertEqual(rows[0]['guided_ok'], 5)
+        self.assertEqual(rows[0]['unguided_ok'], 4)
+        self.assertTrue(rows[0]['parity_ok'])
+        run = rows[0]['runs'][0]
+        self.assertEqual(run['guided']['move'], 'e8')
+        self.assertIn('simulations', run['guided'])
+        self.assertIn('elapsed', run['guided'])
+        # SearchTimeout inside advise => failed run, never a crash
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(arena.advice, 'advise', side_effect=c.SearchTimeout):
+            path = Path(tmp)/'c.json'
+            path.write_text(json.dumps([case]), encoding='utf-8')
+            rows = arena.live_repair_check(pv.new_model(), [path],
+                                           seconds=0.1, seeds=arena.REPAIR_SEEDS[:2],
+                                           workers=2)
+        self.assertFalse(rows[0]['correct'])
+        self.assertEqual(rows[0]['guided_ok'], 0)
 
     def test_repair_gate_rows_fail_closed_on_bad_file(self):
         # rows()/histories() silently returning () on a broken gate file would
