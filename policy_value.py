@@ -20,10 +20,17 @@ SCHEMA=1
 
 
 def code_hash():
-    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    # Hash both model implementations so any code change invalidates a stale
+    # champion of either schema.
+    import nn_model
+    return hashlib.sha256(
+        Path(__file__).read_bytes() + nn_model.code_hash().encode()).hexdigest()
 
 
 def model_id(model):
+    if isinstance(model, dict) and model.get('schema') == 2:
+        import nn_model
+        return nn_model.model_id(model)
     body=json.dumps({'policy':model.get('policy',{}),'value':model.get('value',{})},
                     sort_keys=True,separators=(',',':')).encode()
     return hashlib.sha256(body).hexdigest()[:12]
@@ -115,6 +122,9 @@ def _dot(weights, keys):
 
 
 def policy_logits(model, g, legal=None):
+    if isinstance(model, dict) and model.get('schema') == 2:
+        import nn_model
+        return nn_model.policy_logits(model, g, legal)
     legal=g.moves(g.to_move) if legal is None else legal
     weights=model.get('policy',{})
     return {move:_dot(weights,policy_keys(g,move)) for move in legal}
@@ -144,6 +154,9 @@ def search_priors(model,g,legal=None,temperature=1.0,value_scale=.75):
 
 
 def value(model,g,side=None):
+    if isinstance(model, dict) and model.get('schema') == 2:
+        import nn_model
+        return nn_model.value(model, g, side)
     side=g.to_move if side is None else side
     return math.tanh(_dot(model.get('value',{}),state_features(g,side)))
 
@@ -156,6 +169,9 @@ def new_model(seed_from=None):
 
 
 def validate(model):
+    if isinstance(model, dict) and model.get('schema') == 2:
+        import nn_model
+        return nn_model.validate(model)
     if not isinstance(model,dict) or model.get('schema')!=SCHEMA:
         raise ValueError('Unsupported policy model')
     for name in ('policy','value'):
@@ -169,7 +185,11 @@ def validate(model):
 
 
 def load(path):
-    return validate(json.loads(Path(path).read_text(encoding='utf-8')))
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    if isinstance(data, dict) and data.get('schema') == 2:
+        import nn_model
+        return nn_model.load(path)
+    return validate(data)
 
 
 @lru_cache(maxsize=2)
@@ -184,12 +204,35 @@ def _load_champion(path,modified):
 
 def load_champion():
     try:
-        return _load_champion(CHAMPION,CHAMPION.stat().st_mtime_ns)
-    except (OSError,ValueError,TypeError):
+        return _load_champion(CHAMPION, CHAMPION.stat().st_mtime_ns)
+    except (OSError, ValueError, TypeError):
         return None
 
 
+def load_champion_any():
+    """Return the champion regardless of schema (1 sparse or 2 neural), so the
+    live advice path can use whichever model type earned promotion. Falls back
+    to schema-1 load_champion() semantics."""
+    model = load_champion()
+    if model is None:
+        # A schema-2 champion is stored identically; try the neural loader.
+        try:
+            import nn_model
+            cand = nn_model.load(CHAMPION)
+            report = cand.get('report', {})
+            if (report.get('promoted') is True and report.get('arena_pairs', 0) >= 100
+                    and report.get('score_lower_95', 0) > .5
+                    and report.get('policy_code_sha256') == nn_model.code_hash()):
+                return cand
+        except (OSError, ValueError, TypeError, ImportError):
+            return None
+    return model
+
+
 def save(model,path):
+    if isinstance(model, dict) and model.get('schema') == 2:
+        import nn_model
+        return nn_model.save(model, path)
     validate(model);path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
     tmp=path.with_suffix(path.suffix+'.tmp')
     tmp.write_text(json.dumps(model,separators=(',',':')),encoding='utf-8')

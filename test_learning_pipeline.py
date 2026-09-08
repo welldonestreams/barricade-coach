@@ -202,6 +202,21 @@ class PolicyValueTests(unittest.TestCase):
         self.assertNotIn(str(arena.GATE_CASES),
                          ['tactical-loss-cases.json','recent-loss-cases.json'])
 
+    def test_neural_schema2_round_trips_and_dispatches(self):
+        import nn_model
+        g=c.Game();m=nn_model.new_model(seed=42)
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'m.json'
+            pv.save(m,path);m2=pv.load(path)
+        self.assertEqual(pv.model_id(m),pv.model_id(m2))
+        self.assertAlmostEqual(pv.value(m,g),pv.value(m2,g),places=9)
+        pr=pv.search_priors(m,g)
+        self.assertAlmostEqual(sum(pr.values()),1.0,places=6)
+        self.assertTrue(all(v>=0 for v in pr.values()))
+        # schema-1 path still intact
+        self.assertIsNotNone(pv.model_id(pv.new_model()))
+        self.assertEqual(len(pv.code_hash()),64)
+
 
 
 if __name__=='__main__':unittest.main()
