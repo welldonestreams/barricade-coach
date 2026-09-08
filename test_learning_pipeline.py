@@ -155,7 +155,8 @@ class PolicyValueTests(unittest.TestCase):
         # examples (the exact positions the gate would then re-test).
         root=Path(__file__).with_name('study')
         train_keys=set()
-        for fn in ('tactical-loss-cases.json','recent-loss-cases.json','training-loss-cases.json'):
+        for fn in ('tactical-loss-cases.json','recent-loss-cases.json',
+                   'training-loss-cases.json','pawn-loss-cases.json'):
             for case in json.loads((root/fn).read_text(encoding='utf-8')):
                 train_keys.add((case['code'],case['ply']))
         gate_cases=json.loads((root/'repair-gate-cases.json').read_text(encoding='utf-8'))
