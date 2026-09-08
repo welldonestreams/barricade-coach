@@ -24,7 +24,7 @@ from pathlib import Path
 import coach as c
 
 SCHEMA = 2
-HIDDEN = 128
+HIDDEN = 256
 MAXW = 4_000_000
 
 

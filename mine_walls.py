@@ -17,7 +17,10 @@ Guards:
 - Idempotent / resumable: safe to re-run; appends only new rows.
 
 Usage:
-  python mine_walls.py --games 900 --max-new 1500 --workers 8
+  python mine_walls.py --games 900 --max-new 1500 --workers 8   # wall-best cases
+  python mine_walls.py --kind pawn --max-new 1200 --margin 50 \
+      --out study/pawn-loss-cases.json \
+      --skip-source study/training-loss-cases.json              # pawn-best cases
 """
 import argparse
 import json
@@ -53,7 +56,7 @@ def gate_codes_and_histories():
 
 
 def mine_game(task):
-    path, skip_codes, skip_hists, margin, min_ply, search_s, max_rows = task
+    path, skip_codes, skip_hists, margin, min_ply, search_s, max_rows, kind = task
     path = Path(path)
     try:
         data = json.loads(path.read_text(encoding='utf-8-sig'))
@@ -87,7 +90,9 @@ def mine_game(task):
             else:
                 if r.get('depth', 0) >= 2 and r.get('scored'):
                     best = r['scored'][0][1]
-                    if len(best) == 3:
+                    best_ok = (len(best) == 3 if kind == 'wall'
+                               else len(best) == 2 if kind == 'pawn' else True)
+                    if best_ok:
                         sc = {m: s for s, m in r['scored']}
                         ps = sc.get(mv)
                         bs = sc.get(best)
@@ -138,6 +143,10 @@ def main():
     ap.add_argument('--max-per-game', type=int, default=12)
     ap.add_argument('--workers', type=int, default=8)
     ap.add_argument('--seed', type=int, default=20260908)
+    ap.add_argument('--kind', choices=('wall', 'pawn', 'any'), default='wall',
+                    help='best-move type to record')
+    ap.add_argument('--skip-source', default=None,
+                    help='another cases JSON whose (code,ply)/histories are skipped')
     ap.add_argument('--out', default=None, help='override output file (smoke tests)')
     args = ap.parse_args()
     if args.out:
@@ -147,6 +156,14 @@ def main():
     skip_codes, gate_hists = gate_codes_and_histories()
     skip_codes |= {x['code'] for x in existing}
     skip_hists = set(hists) | gate_hists
+    if args.skip_source:
+        src = json.loads(Path(args.skip_source).read_text(encoding='utf-8-sig'))
+        skip_codes |= {x['code'] for x in src if isinstance(x, dict)}
+        for x in src:
+            if isinstance(x, dict) and isinstance(x.get('history'), list):
+                skip_hists.add(tuple(x['history']))
+                keys.add((x.get('code'), x.get('ply')))
+        print(json.dumps(dict(skip_source=args.skip_source, skipped=len(src))), flush=True)
     files = sorted((ROOT / 'study' / 'archive').glob('*.json'))
     rng = random.Random(args.seed)
     rng.shuffle(files)
@@ -158,7 +175,8 @@ def main():
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         it = (pool.submit(mine_game,
                           (str(p), skip_codes, skip_hists, args.margin,
-                           args.min_ply, args.search_s, args.max_per_game))
+                           args.min_ply, args.search_s, args.max_per_game,
+                           args.kind))
               for p in files)
         import concurrent.futures as cf
         pending = set()
@@ -208,7 +226,7 @@ def main():
     if new_rows:
         append_cases(new_rows)
     total = len(existing) + len(new_rows)
-    print(json.dumps(dict(scanned=examined, wall_cases=found, added=len(new_rows),
+    print(json.dumps(dict(scanned=examined, cases=found, added=len(new_rows),
                           total=total,
                           seconds=round(time.monotonic() - started, 1))), flush=True)
 
