@@ -72,7 +72,7 @@ class PolicyValueTests(unittest.TestCase):
         path=Path(__file__).with_name('study')/'recent-loss-cases.json'
         rows=list(train_policy.examples([path]))
         self.assertEqual({row['game_hash'].split(':')[1] for row in rows},{'qm1cd6','xc2vpz'})
-        self.assertTrue(all(row['weight']==8 and row['source']=='independent-loss-regression'
+        self.assertTrue(all(row['weight']==16 and row['source']=='independent-loss-regression'
                             for row in rows))
 
 

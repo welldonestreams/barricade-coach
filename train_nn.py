@@ -48,7 +48,7 @@ def load_rows(paths, split='train'):
                     continue
                 sources.append(dict(history=case['history'], split='train', player_holdout=False,
                                     game_hash=f"regression:{case.get('code')}:{case.get('ply')}",
-                                    policy={case['best']: 1.0}, weight=8.0,
+                                    policy={case['best']: 1.0}, weight=16.0,
                                     source='independent-loss-regression'))
         else:
             sources = []
@@ -169,7 +169,7 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
             loss = 0.0
             cnt = 0
             for ex in batch_ex:
-                w = max(0.1, min(12.0, ex['weight']))
+                w = max(0.1, min(24.0, ex['weight']))
                 sv = np.asarray(ex['sv'], dtype=np.float64)
                 # ---- policy forward over all legal moves in one matrix ----
                 X = np.vstack([np.concatenate([sv, np.asarray(ex['av'][m])]) for m in ex['legal']])

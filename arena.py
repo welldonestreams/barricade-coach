@@ -18,7 +18,7 @@ import repair_gate
 ROOT=Path(__file__).resolve().parent
 
 # The gate's repair check MUST use positions disjoint from the training set.
-# tactical-loss-cases.json / recent-loss-cases.json are 8x-weighted TRAINING
+# tactical-loss-cases.json / recent-loss-cases.json are 16x-weighted TRAINING
 # examples (see improve.py inputs and train_policy.py); testing on them would
 # reward memorization, not generalization. repair-gate-cases.json is held out
 # from training entirely and reserved for this gate only.

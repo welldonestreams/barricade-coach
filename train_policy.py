@@ -28,7 +28,7 @@ def examples(paths,split='train'):
                 if not isinstance(case,dict) or not case.get('history') or not case.get('best'):continue
                 sources.append(dict(history=case['history'],split='train',player_holdout=False,
                     game_hash=f"regression:{case.get('code')}:{case.get('ply')}",
-                    policy={case['best']:1.0},weight=8.0,source='independent-loss-regression'))
+                    policy={case['best']:1.0},weight=16.0,source='independent-loss-regression'))
         else:
             sources=[]
             with path.open(encoding='utf-8') as src:
@@ -60,7 +60,7 @@ def train(rows,epochs=3,rate=.03,value_rate=.01,seed=1,base=None):
         rng.shuffle(rows);policy_loss=value_loss=count=0
         step=rate/(1+.35*epoch);total_weight=0.0
         for row in rows:
-            weight=max(.1,min(12.0,float(row.get('weight',1.0))))
+            weight=max(.1,min(24.0,float(row.get('weight',1.0))))
             g=c.Game(row['history']);legal=g.moves(g.to_move)
             target={m:float(v) for m,v in row.get('policy',{}).items() if m in legal and v>=0}
             z=sum(target.values())
