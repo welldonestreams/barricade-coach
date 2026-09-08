@@ -14,7 +14,8 @@
       "hf3",
       "hc6"
     ],
-    "best": "hb3"
+    "best": "hb1",
+    "acceptable": ["hb1", "hb2", "hb3", "hc1", "hc2"]
   },
   {
     "code": "81s8yr",
@@ -33,7 +34,8 @@
       "hh3",
       "ha6"
     ],
-    "best": "hb3"
+    "best": "hb3",
+    "acceptable": ["hb3"]
   },
   {
     "code": "81s8yr",
@@ -54,7 +56,8 @@
       "vc4",
       "ve4"
     ],
-    "best": "vd5"
+    "best": "vd5",
+    "acceptable": ["vd5"]
   },
   {
     "code": "81s8yr",
@@ -79,7 +82,8 @@
       "hf5",
       "va2"
     ],
-    "best": "e5"
+    "best": "vd5",
+    "acceptable": ["vd5"]
   },
   {
     "code": "81s8yr",
@@ -106,7 +110,8 @@
       "vf7",
       "hg6"
     ],
-    "best": "vd5"
+    "best": "vd5",
+    "acceptable": ["vd5"]
   },
   {
     "code": "81s8yr",
@@ -135,7 +140,8 @@
       "hh5",
       "hh7"
     ],
-    "best": "vd5"
+    "best": "vd5",
+    "acceptable": ["vd5"]
   },
   {
     "code": "52s6kd",
@@ -153,7 +159,8 @@
       "hc6",
       "hh3"
     ],
-    "best": "hg6"
+    "best": "d6",
+    "acceptable": ["d6", "hf7", "hf8", "hg6", "hg7", "hg8"]
   },
   {
     "code": "52s6kd",
@@ -173,7 +180,8 @@
       "vf5",
       "va6"
     ],
-    "best": "d6"
+    "best": "d6",
+    "acceptable": ["d6", "e5", "ve3", "ve4", "hf4", "hf7", "hf8", "hg4", "hg5", "hg6", "hg7", "hg8"]
   },
   {
     "code": "52s6kd",
@@ -195,7 +203,8 @@
       "hg4",
       "vd5"
     ],
-    "best": "vb5"
+    "best": "e5",
+    "acceptable": ["e5"]
   },
   {
     "code": "52s6kd",
@@ -219,7 +228,8 @@
       "hh5",
       "hd4"
     ],
-    "best": "vh4"
+    "best": "vg3",
+    "acceptable": ["vg3", "vg5", "vh4"]
   },
   {
     "code": "zjj0bn",
@@ -252,7 +262,8 @@
       "g3",
       "vf2"
     ],
-    "best": "vg1"
+    "best": "vg1",
+    "acceptable": ["vg1"]
   },
   {
     "code": "zjj0bn",
@@ -287,6 +298,7 @@
       "g2",
       "hg1"
     ],
-    "best": "hg2"
+    "best": "hg3",
+    "acceptable": ["hg3", "hh2", "hh3", "hg2"]
   }
 ]

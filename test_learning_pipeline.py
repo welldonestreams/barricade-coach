@@ -134,12 +134,19 @@ class PolicyValueTests(unittest.TestCase):
             self.assertEqual(arena.holdout_positions([path],1,1,player_only=True),[[]])
 
     def test_arena_runs_complete_color_swapped_pairs_in_parallel(self):
-        fake=dict(points=1.0,winner=c.RED,plies=10,illegal=0,candidate_latencies=[.1])
+        fake=dict(points=1.0,winner=c.RED,plies=10,illegal=0,decision_failures=0,candidate_latencies=[.1])
         with patch.object(arena,'play',return_value=fake):
             report=arena.evaluate({},[[],['e2','e8']],.01,1,workers=2)
         self.assertEqual(report['arena_pairs'],2)
         self.assertEqual(report['games'],4)
         self.assertEqual(len(report['records']),4)
+
+    def test_arena_timeout_is_a_recorded_failed_decision(self):
+        with patch.object(arena.advice,'advise',side_effect=c.SearchTimeout):
+            move,elapsed,result=arena.decision(c.Game(),.01,1,None)
+        self.assertIn(move,c.Game().moves(c.RED))
+        self.assertGreaterEqual(elapsed,0)
+        self.assertTrue(result['arena_timeout'])
 
     def test_repair_gate_is_disjoint_from_training(self):
         # The promotion gate's repair positions must be held out from training,
@@ -157,7 +164,10 @@ class PolicyValueTests(unittest.TestCase):
             self.assertNotIn(key,train_keys,
                 f'gate case {key} also appears in the training set; gate would test memorization')
             # and the expected move must be legal on its position
-            self.assertIn(case['best'],c.Game(case['history']).moves(c.Game(case['history']).to_move))
+            legal=c.Game(case['history']).moves(c.Game(case['history']).to_move)
+            self.assertIn(case['best'],legal)
+            self.assertIn(case['best'],case['acceptable'])
+            self.assertTrue(set(case['acceptable']).issubset(legal))
 
     def test_repair_gate_histories_are_filtered_from_every_training_source(self):
         gate_case=json.loads((Path(__file__).with_name('study')/'repair-gate-cases.json').read_text())[0]

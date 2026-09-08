@@ -27,21 +27,27 @@ GATE_CASES = repair_gate.CASES
 
 def decision(g,seconds,seed,model):
     started=time.monotonic()
-    result=advice.advise(g.history,g.to_move,seconds=seconds,engine='mcts',seed=seed,
-                         policy_model=model)
+    try:
+        result=advice.advise(g.history,g.to_move,seconds=seconds,engine='mcts',seed=seed,
+                             policy_model=model)
+    except c.SearchTimeout:
+        # A saturated CPU can make the tactical check hit its internal deadline.
+        # Record that as a failed arena decision instead of aborting the report.
+        return g.moves(g.to_move)[0],time.monotonic()-started,dict(arena_timeout=True)
     return result['scored'][0][1],time.monotonic()-started,result
 
 
 def play(history,candidate_side,model,seconds,seed,max_plies=140,opponent=False):
-    g=c.Game(history);latencies=[];illegal=0
+    g=c.Game(history);latencies=[];illegal=0;decision_failures=0
     while g.winner is None and len(g.history)<max_plies:
         use=model if g.to_move==candidate_side else opponent
-        move,elapsed,_=decision(g,seconds,seed+len(g.history)*7919,use)
+        move,elapsed,result=decision(g,seconds,seed+len(g.history)*7919,use)
+        if result.get('arena_timeout'):decision_failures+=1
         if g.to_move==candidate_side:latencies.append(elapsed)
         if move not in g.moves(g.to_move):illegal+=1;break
         g.apply(move)
     points=.5 if g.winner is None else float(g.winner==candidate_side)
-    return dict(points=points,winner=g.winner,plies=len(g.history),illegal=illegal,
+    return dict(points=points,winner=g.winner,plies=len(g.history),illegal=illegal,decision_failures=decision_failures,
                 candidate_latencies=latencies)
 
 
@@ -97,17 +103,21 @@ def regression_results(model, paths):
             legal=game.moves(game.to_move);expected=case['best']
             if expected not in legal:
                 continue
+            acceptable=case.get('acceptable',[expected])
+            if not isinstance(acceptable,list) or not acceptable or any(move not in legal for move in acceptable):
+                continue
             priors=pv.search_priors(model,game,legal)
             chosen=max(priors,key=priors.get) if priors else None
             rows.append(dict(code=case.get('code'),ply=case.get('ply'),
-                             expected=expected,chosen=chosen,
-                             correct=chosen==expected))
+                             expected=expected,acceptable=acceptable,chosen=chosen,
+                             correct=chosen in acceptable))
     return rows
 
 
 def passes_promotion(report):
     return (report['arena_pairs']>=100 and report['score_lower_95']>.5
             and report['illegal_moves']==0 and report['p95_seconds']<5
+            and report['decision_failures']==0
             and report['regression_cases']>0
             and report['regression_correct']==report['regression_cases'])
 
@@ -139,7 +149,8 @@ def evaluate(model,starts,seconds,seed,baselines=None,workers=2):
     ordered=sorted(latencies);p95=ordered[min(len(ordered)-1,int(.95*len(ordered)))] if ordered else math.inf
     return dict(arena_pairs=len(pairs),games=len(records),score=sum(r['points'] for r in records)/max(1,len(records)),
                 score_lower_95=lower95(pairs),p95_seconds=p95,
-                illegal_moves=sum(r['illegal'] for r in records),records=records)
+                illegal_moves=sum(r['illegal'] for r in records),
+                decision_failures=sum(r['decision_failures'] for r in records),records=records)
 
 
 def main():
@@ -163,7 +174,7 @@ def main():
     # for generating the next teacher/candidate.
     if not repair_gate_passes(regressions):
         report=dict(arena_pairs=0,games=0,score=0.0,score_lower_95=0.0,
-                    p95_seconds=0.0,illegal_moves=0,records=[],
+                    p95_seconds=0.0,illegal_moves=0,decision_failures=0,records=[],
                     candidate_sha256=hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),
                     policy_code_sha256=pv.code_hash(),seconds=args.seconds,workers=args.workers,
                     baselines=['raw-mcts'],promoted=False,passed=False,

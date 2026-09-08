@@ -192,7 +192,10 @@ the same held-out starts with colors exchanged. It records outcomes, illegal mov
 latency, model/code hashes, a paired confidence bound, and the candidate's raw
 policy/value preference on 12 confirmed repair positions. `--promote` writes the
 live champion only with at least 100 pairs, a lower 95% score bound above 50%, zero
-illegal moves, p95 under five seconds, and all 12 repair choices correct. The repair
+illegal moves, p95 under five seconds, and an engine-acceptable choice in all 12
+repair positions. Each repair case stores every move within 30 heuristic points of
+its completed depth-two oracle result, so tied legal defenses do not become false
+failures. The repair
 positions live in `study/repair-gate-cases.json`; `train_policy.py` excludes their
 full histories from every input source, and the arena excludes them from its paired
 starts. A candidate that misses a repair is rejected before the expensive paired
