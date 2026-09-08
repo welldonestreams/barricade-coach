@@ -1,9 +1,25 @@
 #!/usr/bin/env python3
 """Train a schema-2 neural policy/value candidate.
 
-Reads the SAME teacher target format as train_policy.py (including the
-. json regression cases as weighted examples) and the graded value label,
-then fits a small numpy MLP with Adam. Never touches the live champion.
+Reads teacher-format targets (jsonl rows, as produced by teacher_data.py and
+mine_to_teacher.py) and fits a small numpy MLP with Adam. Never touches the
+live champion.
+
+Data pipeline (corrected 2026-09-08): mined loss positions are converted to
+SOFT teacher-format rows (full top-k distribution + graded value) instead of
+16x one-hot targets. Training then:
+
+- tags every row with a source class ('teacher' or 'loss') by filename,
+- merges rows that reach the same canonical board state (pawns + walls +
+  reserves + side), averaging the target distributions,
+- samples batches STRATIFIED by source class (--teacher-frac of each batch
+  from teacher rows, the rest from loss rows), so corpus dominance is
+  controlled by sampling, not by multiplying gradient weight,
+- weights mined rows 2-3x, with the upper bound only when the depth-2 search
+  was decisive (large stable score margin => sharp top policy mass).
+
+The old one-hot .json regression format is still accepted for backwards
+compatibility but demoted to weight 2.0; prefer converted jsonl rows.
 """
 import argparse
 import json
@@ -24,9 +40,12 @@ def _np():
 
 
 def load_rows(paths, split='train'):
-    """Yield training rows (history, policy dict, value, weight). Mirrors
-    train_policy.examples() so teacher and regression files are consumed
-    identically."""
+    """Yield training rows tagged with a source class.
+
+    'teacher' rows come from jsonl teacher corpora; 'loss' rows come either
+    from converted mined-case jsonl (soft targets) or legacy one-hot .json
+    case files (weight 2.0, kept for compatibility only).
+    """
     seen = set()
     try:
         import repair_gate
@@ -35,7 +54,10 @@ def load_rows(paths, split='train'):
         held_out_histories = frozenset()
     for p in paths:
         p = Path(p)
+        source = 'loss' if 'loss' in p.stem.casefold() else 'teacher'
         if p.suffix == '.json':
+            # Legacy one-hot case files (old miner output). Softly demoted;
+            # run mine_to_teacher.py to convert them to jsonl distributions.
             try:
                 data = json.loads(p.read_text(encoding='utf-8'))
             except (OSError, json.JSONDecodeError):
@@ -46,22 +68,24 @@ def load_rows(paths, split='train'):
             for case in data:
                 if not isinstance(case, dict) or not case.get('history') or not case.get('best'):
                     continue
-                sources.append(dict(history=case['history'], split='train', player_holdout=False,
+                sources.append(dict(history=case['history'], split='train',
+                                    player_holdout=False,
                                     game_hash=f"regression:{case.get('code')}:{case.get('ply')}",
-                                    policy={case['best']: 1.0}, weight=16.0,
-                                    source='independent-loss-regression'))
+                                    policy={case['best']: 1.0}, weight=2.0,
+                                    source='loss'))
         else:
             sources = []
             with p.open(encoding='utf-8') as src:
                 for line in src:
                     try:
-                        sources.append(json.loads(line))
+                        loaded = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    sources.append(loaded)
         for loaded in sources:
             nested = loaded.get('samples') if isinstance(loaded, dict) else None
-            source = nested if isinstance(nested, list) else [loaded]
-            for row in source:
+            batch = nested if isinstance(nested, list) else [loaded]
+            for row in batch:
                 if nested is not None:
                     row = {**row, 'split': 'train'}
                 try:
@@ -76,14 +100,24 @@ def load_rows(paths, split='train'):
                 if tuple(g.history) in held_out_histories:
                     continue
                 seen.add(key)
+                row.setdefault('source', source)
                 yield row
+
+
+def position_key(g):
+    """Canonical board state (transposition-independent)."""
+    return (g.pawns[c.RED], g.pawns[c.BLUE], tuple(sorted(g.walls)),
+            g.remaining[c.RED], g.remaining[c.BLUE], g.to_move)
 
 
 def build_examples(rows):
     """Return list of dicts: state_vec, legal[], action_vecs, policy_probs,
-    value_target, weight. Policy target is the teacher rank distribution over
-    legal moves; value target is the graded tanh label (or +-1 from winner)."""
-    out = []
+    value_target, weight, kind. Duplicate canonical board states from
+    different sources are merged: target distributions are averaged
+    (weighted by each row's weight), value targets weighted-averaged.
+    """
+    merged = {}
+    order = []
     for row in rows:
         try:
             g = c.Game(row['history'])
@@ -97,24 +131,62 @@ def build_examples(rows):
         if not z:
             continue
         target = {m: v / z for m, v in target.items()}
-        sv = nn.state_features(g)
-        av = {m: nn.action_features(g, m) for m in legal}
-        # value target
+        kind = 'loss' if row.get('source') == 'loss' else 'teacher'
+        w = float(row.get('weight', 1.0))
+        if kind == 'loss':
+            # Mined rows: 2x base, 3x when the search was decisive (top
+            # policy mass sharp => large stable score margin).
+            top_mass = max(target.values())
+            w = 3.0 if top_mass >= 0.6 else 2.0
         vt = row.get('value')
         if vt is not None:
             vt = max(-1.0, min(1.0, float(vt)))
         else:
-            w = row.get('winner')
-            if w in (c.RED, c.BLUE):
-                vt = 1.0 if w == g.to_move else -1.0
+            winner = row.get('winner')
+            if winner in (c.RED, c.BLUE):
+                vt = 1.0 if winner == g.to_move else -1.0
             else:
                 vt = None
-        out.append(dict(sv=sv, legal=legal, av=av, target=target,
-                        vt=vt, weight=float(row.get('weight', 1.0))))
+        key = position_key(g)
+        acc = merged.get(key)
+        if acc is None:
+            acc = dict(sv=None, legal=legal, av=None, policy=None,
+                       vt_acc=0.0, w_acc=0.0, kind=kind, g=g)
+            merged[key] = acc
+            order.append(key)
+        acc['policy'] = acc['policy'] or {}
+        for m, pr in target.items():
+            acc['policy'][m] = acc['policy'].get(m, 0.0) + pr * w
+        if vt is not None:
+            acc['vt_acc'] += vt * w
+            acc['w_acc'] += w
+    out = []
+    for key in order:
+        acc = merged[key]
+        pz = sum(acc['policy'].values())
+        if not pz:
+            continue
+        policy = {m: v / pz for m, v in acc['policy'].items()}
+        out.append(dict(sv=nn.state_features(acc['g']),
+                        legal=acc['legal'],
+                        av={m: nn.action_features(acc['g'], m) for m in acc['legal']},
+                        target=policy,
+                        vt=(acc['vt_acc'] / acc['w_acc']) if acc['w_acc'] else None,
+                        weight=min(12.0, max(1.0, acc['w_acc'])),
+                        kind=acc['kind']))
     return out
 
 
-def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=True):
+def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907,
+          teacher_frac=0.7, verbose=True):
+    """Fit with Adam over source-stratified batches.
+
+    Each epoch shuffles the teacher and loss pools and consumes batches that
+    mix ``teacher_frac`` teacher rows with the rest loss rows, so a small
+    high-value loss corpus is seen every epoch without drowning ordinary
+    positions. If there are no loss rows the epoch is a plain sequential
+    pass over the teacher pool (old behaviour).
+    """
     np = _np()
     rng = random.Random(seed)
     d = model['metadata']['dims']
@@ -130,7 +202,6 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
     pW1, pb1, pW2, pb2 = unflatten(model['policy'], S + A)
     vW1, vb1, vW2, vb2 = unflatten(model['value'], S)
 
-    # Adam state
     def adam():
         return dict(t=0)
 
@@ -155,51 +226,67 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
             vh = vs[k] / (1 - b2e ** t)
             params[k] -= lr * mh / (np.sqrt(vh) + eps)
 
+    teachers = [ex for ex in examples if ex['kind'] != 'loss']
+    losses = [ex for ex in examples if ex['kind'] == 'loss']
+    stratify = bool(teachers) and bool(losses)
+    if not stratify:
+        teachers = examples if not losses else teachers
     for epoch in range(epochs):
-        rng.shuffle(examples)
+        rng.shuffle(teachers)
+        rng.shuffle(losses)
         tot_loss = 0.0
         n = 0
-        for i in range(0, len(examples), batch):
-            batch_ex = examples[i:i + batch]
-            # accumulate grads
+        if stratify:
+            n_teacher = max(1, int(round(batch * teacher_frac)))
+            n_loss = max(1, batch - n_teacher)
+            n_batches = math.ceil(len(teachers) / n_teacher)
+        else:
+            n_batches = math.ceil(max(1, len(teachers)) / batch)
+        for b in range(n_batches):
+            if stratify:
+                t_off = (b * n_teacher) % len(teachers)
+                teacher_chunk = [teachers[(t_off + j) % len(teachers)]
+                                 for j in range(n_teacher)]
+                l_off = (b * n_loss) % len(losses)
+                loss_chunk = [losses[(l_off + j) % len(losses)]
+                              for j in range(n_loss)]
+                chunk = teacher_chunk + loss_chunk
+            else:
+                start = (b * batch) % len(teachers)
+                chunk = [teachers[(start + j) % len(teachers)]
+                         for j in range(min(batch, len(teachers)))]
             gp = {k: np.zeros_like(v) for k, v in
                   {'W1': pW1, 'b1': pb1, 'W2': pW2, 'b2': pb2}.items()}
             gv = {k: np.zeros_like(v) for k, v in
                   {'W1': vW1, 'b1': vb1, 'W2': vW2, 'b2': vb2}.items()}
             loss = 0.0
             cnt = 0
-            for ex in batch_ex:
-                w = max(0.1, min(24.0, ex['weight']))
+            for ex in chunk:
+                w = max(0.1, min(12.0, ex['weight']))
                 sv = np.asarray(ex['sv'], dtype=np.float64)
-                # ---- policy forward over all legal moves in one matrix ----
                 X = np.vstack([np.concatenate([sv, np.asarray(ex['av'][m])]) for m in ex['legal']])
                 h = np.tanh(X @ pW1 + pb1)
                 logits = (h @ pW2 + pb2).ravel()
                 logits = logits - logits.max()
                 probs = np.exp(logits)
                 probs = probs / probs.sum()
-                # cross-entropy vs target distribution
                 idx = {m: k for k, m in enumerate(ex['legal'])}
                 tgt = np.zeros(len(ex['legal']))
                 for m, p in ex['target'].items():
                     tgt[idx[m]] = p
                 ce = -np.sum(tgt * np.log(probs + 1e-12))
                 loss += w * ce
-                # gradient of CE wrt logits
                 dl = (probs - tgt) * w
-                # backprop policy head (single tanh hidden, linear out)
                 gp['W2'] += h.T @ dl[:, None]
                 gp['b2'] += dl.sum()
                 dh = dl[:, None] @ pW2.T
                 dz = dh * (1 - h ** 2)
                 gp['W1'] += X.T @ dz
                 gp['b1'] += dz.sum(axis=0)
-                # ---- value head ----
                 if ex['vt'] is not None:
                     hv = np.tanh(sv @ vW1 + vb1)
                     yhat = float((hv @ vW2 + vb2)[0])
                     err = yhat - ex['vt']
-                    # value output is raw (tanh applied later), linear loss
                     gv['W2'] += (hv * w * err)[:, None]
                     gv['b2'] += np.array([w * err])
                     dhv = (w * err) * vW2.ravel()
@@ -211,18 +298,15 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
                 loss /= cnt
                 tot_loss += loss
                 n += 1
-            # Adam adapts per-parameter; a constant LR is correct here. The old
-            # schedule decayed to ~0.0001 within a few epochs and stalled policy
-            # learning (loss plateaued ~2.77).
-            t += 1  # one optimizer step per batch (policy+value share the step)
+            t += 1
             lr_t = lr
             adam_step({'W1': pW1, 'b1': pb1, 'W2': pW2, 'b2': pb2}, gp, m_p, v_p, lr_t)
             adam_step({'W1': vW1, 'b1': vb1, 'W2': vW2, 'b2': vb2}, gv, m_v, v_v, lr_t)
         if verbose:
             print(json.dumps(dict(epoch=epoch + 1, examples=len(examples),
+                                  teachers=len(teachers), losses=len(losses),
                                   loss=round(tot_loss / max(1, n), 5))), flush=True)
 
-    # write back flattened (keep in/hidden/out dims on each layer dict)
     model['policy'] = {'W1': pW1.reshape(-1).tolist(), 'b1': pb1.tolist(),
                        'W2': pW2.reshape(-1).tolist(), 'b2': pb2.tolist(),
                        'in': S + A, 'hidden': H, 'out': 1}
@@ -231,25 +315,32 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
                       'in': S, 'hidden': H, 'out': 1}
     model['metadata'] = dict(kind='mlp', dims=d, seed=seed,
                              trained=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                             examples=len(examples), epochs=epochs)
+                             examples=len(examples), epochs=epochs,
+                             teacher_frac=teacher_frac,
+                             stratified=stratify)
     return model
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('inputs', nargs='+')
-    ap.add_argument('--epochs', type=int, default=8)
+    ap.add_argument('--epochs', type=int, default=15)
     ap.add_argument('--lr', type=float, default=0.003)
     ap.add_argument('--batch', type=int, default=64)
-    ap.add_argument('--seed', type=int, default=20260907)
+    ap.add_argument('--seed', type=int, default=20260908)
+    ap.add_argument('--teacher-frac', type=float, default=0.7)
     ap.add_argument('--output', default=None)
     args = ap.parse_args()
     rows = list(load_rows(args.inputs))
     print(json.dumps(dict(rows=len(rows))), flush=True)
     ex = build_examples(rows)
-    print(json.dumps(dict(examples=len(ex))), flush=True)
+    kinds = {}
+    for e in ex:
+        kinds[e['kind']] = kinds.get(e['kind'], 0) + 1
+    print(json.dumps(dict(examples=len(ex), kinds=kinds)), flush=True)
     model = nn.new_model(args.seed)
-    model = train(model, ex, epochs=args.epochs, lr=args.lr, batch=args.batch, seed=args.seed)
+    model = train(model, ex, epochs=args.epochs, lr=args.lr, batch=args.batch,
+                  seed=args.seed, teacher_frac=args.teacher_frac)
     out = Path(args.output) if args.output else ROOT / 'memory' / 'candidates' / f'{time.time_ns()}' / 'model.json'
     nn.save(model, out)
     print(json.dumps(dict(candidate=str(out), id=nn.model_id(model))), flush=True)

@@ -10,6 +10,7 @@ import mcts_coach
 import policy_value as pv
 import repair_gate
 import teacher_data
+import train_nn
 import train_policy
 import measure_real_games
 
@@ -260,6 +261,76 @@ class PolicyValueTests(unittest.TestCase):
         # schema-1 path still intact
         self.assertIsNotNone(pv.model_id(pv.new_model()))
         self.assertEqual(len(pv.code_hash()),64)
+
+    def _write_rows(self, tmp, name, rows):
+        path=Path(tmp)/name
+        path.write_text('\n'.join(json.dumps(r) for r in rows),encoding='utf-8')
+        return path
+
+    def test_loss_rows_are_soft_and_merged_by_canonical_state(self):
+        # A mined-loss row and a teacher row reaching the SAME board state
+        # must merge into one example with an averaged target -- never two
+        # competing one-hot gradients.
+        hist=['e2','e8','e3','e7','e4','e6']
+        with tempfile.TemporaryDirectory() as tmp:
+            t=Path(tmp)/'corpus.jsonl'
+            l=Path(tmp)/'losses.jsonl'
+            t.write_text(json.dumps(dict(game_hash='t1',split='train',player_holdout=False,
+                history=hist,value=0.5,policy={'hd3':0.6,'e5':0.4},
+                teacher=dict(depth=3)))+'\n',encoding='utf-8')
+            l.write_text(json.dumps(dict(game_hash='l1',split='train',player_holdout=False,
+                history=hist,value=-0.2,policy={'hd3':0.9,'vf5':0.1},
+                teacher=dict(depth=2)))+'\n',encoding='utf-8')
+            rows=list(train_nn.load_rows([t,l]))
+            sources={r['source'] for r in rows}
+            self.assertEqual(sources,{'teacher','loss'})
+            ex=train_nn.build_examples(rows)
+            self.assertEqual(len(ex),1,'canonical duplicates must merge')
+            self.assertIn('hd3',ex[0]['target'])
+            self.assertGreater(ex[0]['weight'],1.0,'merged rows keep combined weight')
+
+    def test_loss_weight_scales_with_search_margin(self):
+        # Sharp mined targets (large stable margin => top mass high) train at
+        # 3x; flat ones at 2x.
+        with tempfile.TemporaryDirectory() as tmp:
+            l=Path(tmp)/'losses.jsonl'
+            l.write_text('\n'.join(json.dumps(r) for r in [
+                dict(game_hash='sharp',split='train',player_holdout=False,
+                     history=[],value=0.3,policy={'e2':1.0}),
+                # red to move after e2,e8: e3/d2/f2 are all legal, so the
+                # uniform target stays flat (top mass 1/3) after legal-filter.
+                dict(game_hash='flat',split='train',player_holdout=False,
+                     history=['e2','e8'],value=-0.1,
+                     policy={m:1/20 for m in
+                             ('e3','d2','f2','e4','d3','f3','c2','g2','e1','d1',
+                              'f1','c1','g1','ha2','hc2','hg2','ve2','vd2','vf2',
+                              'vc2','vg2')}),
+            ])+'\n',encoding='utf-8')
+            rows=list(train_nn.load_rows([l]))
+            ex=train_nn.build_examples(rows)
+            self.assertEqual(len(ex),2)
+            sharp=[e for e in ex if max(e['target'].values())>=0.99]
+            flat=[e for e in ex if max(e['target'].values())<0.99]
+            self.assertEqual(len(sharp),1)
+            self.assertEqual(len(flat),1)
+            self.assertEqual(sharp[0]['weight'],3.0)
+            self.assertEqual(flat[0]['weight'],2.0)
+
+    def test_train_stratifies_when_both_pools_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t=Path(tmp)/'corpus.jsonl'
+            l=Path(tmp)/'losses.jsonl'
+            t.write_text('\n'.join(json.dumps(dict(game_hash=f't{i}',split='train',
+                player_holdout=False,history=[],value=0.0,policy={'e2':1.0})) for i in range(40))+'\n',encoding='utf-8')
+            l.write_text('\n'.join(json.dumps(dict(game_hash=f'l{i}',split='train',
+                player_holdout=False,history=['e2'],value=0.0,policy={'e8':1.0})) for i in range(8))+'\n',encoding='utf-8')
+            rows=list(train_nn.load_rows([t,l]))
+            ex=train_nn.build_examples(rows)
+            import nn_model
+            m=nn_model.new_model(seed=7)
+            m=train_nn.train(m,ex,epochs=2,batch=16,seed=7,verbose=False)
+            self.assertTrue(m['metadata'].get('stratified'))
+            self.assertEqual(m['metadata'].get('teacher_frac'),0.7)
 
 
 
