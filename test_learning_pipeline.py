@@ -281,6 +281,43 @@ class PolicyValueTests(unittest.TestCase):
         self.assertFalse(rows[0]['correct'])
         self.assertEqual(rows[0]['guided_ok'], 0)
 
+    def test_production_root_priors_keep_an_exploration_floor(self):
+        import mcts_coach
+        legal=['e2','d1','f1','ha1']
+        raw={'e2':0.999,'ha1':0.001,'illegal':99}
+        shaped=mcts_coach.tempered_root_priors(raw,legal)
+        self.assertEqual(set(shaped),set(legal))
+        self.assertAlmostEqual(sum(shaped.values()),1.0,places=9)
+        floor=mcts_coach.ROOT_UNIFORM_MIX/len(legal)
+        self.assertTrue(all(value>=floor for value in shaped.values()))
+        self.assertGreater(shaped['ha1'],raw['ha1'])
+
+    def test_wide_tactical_root_covers_known_sharp_walls(self):
+        cases=json.loads((Path(__file__).with_name('study')/
+                          'repair-gate-cases.json').read_text(encoding='utf-8'))
+        wanted={('52s6kd',18):'vg3',('zjj0bn',27):'vg1',
+                ('zjj0bn',29):'hg3'}
+        found=0
+        for case in cases:
+            key=(case.get('code'),case.get('ply'))
+            if key not in wanted:
+                continue
+            game=c.Game(case['history'])
+            self.assertIn(wanted[key],c.relevant_walls(game,slack=4))
+            found+=1
+        self.assertEqual(found,len(wanted))
+
+    def test_nearby_search_coverage_cases_stay_in_wide_root(self):
+        path=Path(__file__).with_name('study')/'search-coverage-cases.json'
+        rows=json.loads(path.read_text(encoding='utf-8'))
+        self.assertGreaterEqual(len(rows),4)
+        for row in rows:
+            game=c.Game(row['history'])
+            legal=set(game.moves(game.to_move))
+            wide=set(c.relevant_walls(game,slack=4))
+            self.assertTrue(set(row['must_consider']).issubset(legal))
+            self.assertTrue(set(row['must_consider']).issubset(wide))
+
     def test_repair_gate_rows_fail_closed_on_bad_file(self):
         # rows()/histories() silently returning () on a broken gate file would
         # disable the training-side leakage filter. They must raise instead.
@@ -351,6 +388,25 @@ class PolicyValueTests(unittest.TestCase):
             self.assertEqual(len(ex),1,'canonical duplicates must merge')
             self.assertIn('hd3',ex[0]['target'])
             self.assertGreater(ex[0]['weight'],1.0,'merged rows keep combined weight')
+
+    def test_deeper_label_with_same_source_hash_refines_shallow_target(self):
+        hist=['e2','e8','e3','e7','e4','e6']
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'loss-deep.jsonl'
+            common=dict(game_hash='mined:x:7',split='train',player_holdout=False,
+                        source='loss',history=hist,value=0.0)
+            rows=[{**common,'policy':{'e5':0.8,'hd3':0.2},
+                   'teacher':{'depth':2}},
+                  {**common,'policy':{'hd3':0.9,'e5':0.1},
+                   'teacher':{'depth':4},'weight':5.0}]
+            path.write_text('\n'.join(json.dumps(row) for row in rows)+'\n',
+                            encoding='utf-8')
+            loaded=list(train_nn.load_rows([path]))
+            self.assertEqual(len(loaded),2)
+            examples=train_nn.build_examples(loaded)
+            self.assertEqual(len(examples),1)
+            self.assertGreater(examples[0]['target']['hd3'],
+                               examples[0]['target']['e5'])
 
     def test_loss_weight_scales_with_search_margin(self):
         # Sharp mined targets (large stable margin => top mass high) train at

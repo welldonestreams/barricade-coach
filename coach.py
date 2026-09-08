@@ -471,7 +471,7 @@ def search_position(red_sq, blue_sq, walls, side, depth=2, time_limit=5.0,
 
 
 def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
-                     root_moves=()):
+                     root_moves=(), root_slack=4, wide_root=True):
     """Deterministic selective minimax for wall-rich live positions.
 
     Full-width depth two often cannot finish inside the live safeguard budget
@@ -481,7 +481,8 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
     proof, but all returned moves are legal and every published iteration is
     complete over the declared candidate set.
     """
-    if not 1 <= depth <= 6 or not 2 <= beam <= 32:
+    if (not 1 <= depth <= 6 or not 2 <= beam <= 32
+            or not isinstance(root_slack, int) or not 2 <= root_slack <= 8):
         raise ValueError('Invalid candidate-search limits')
     started=time.monotonic();deadline=started+time_limit;g=Game(history)
     side=g.to_move if side is None else side
@@ -492,7 +493,14 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
     def candidates(state, forced=(),root=False):
         check();rows=[]
         moves=[f'{LETTERS[p[0]]}{p[1]+1}' for _,p in state.pawn_moves(state.to_move)]
-        moves.extend(relevant_walls(state))
+        # Root coverage is deliberately wider than the recursive beam. Sharp
+        # defensive walls can sit four plies away from today's shortest path:
+        # pruning them before minimax sees an opponent reply made the live
+        # safeguard blind at 52s6kd p18 and zjj0bn p29. Keep every legal wall
+        # touching a route within ``root_slack`` at the root; descendants use
+        # the original tight route set and beam so the search still completes
+        # inside the live reserve.
+        moves.extend(relevant_walls(state, root_slack if root else 2))
         if forced:
             legal_forced=set(state.moves(state.to_move))
             moves.extend(move for move in forced if move not in moves and move in legal_forced)
@@ -502,6 +510,8 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
         reverse=state.to_move!=side
         rows.sort(key=lambda row:((-row[0] if reverse else row[0]),len(row[1]),row[1]))
         keep={move for _,move,_ in rows[:beam*(2 if root else 1)]}
+        if root and wide_root:
+            keep.update(move for _,move,_ in rows if len(move)==3)
         keep.update(move for _,move,_ in rows if len(move)==2)
         keep.update(move for move in forced if move in {row[1] for row in rows})
         return [row for row in rows if row[1] in keep]
@@ -536,7 +546,8 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
     except SearchTimeout:
         timed_out=True
     return dict(scored=scored,depth=completed,nodes=nodes,elapsed=time.monotonic()-started,
-                timed_out=timed_out,principal_variation=pv,selective=True,beam=beam)
+                timed_out=timed_out,principal_variation=pv,selective=True,beam=beam,
+                root_candidates=len(roots),root_slack=root_slack,wide_root=wide_root)
 
 
 def _search_game(g, side, depth, time_limit, started, deadline):

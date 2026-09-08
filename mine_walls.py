@@ -5,8 +5,10 @@ Extends study/training-loss-cases.json with new {code, ply, history, best,
 played, delta} rows. Replays candidate games and, at plies where the eventual
 LOSER is to move and still holds walls, runs a completed depth-2 minimax.
 Where the best move is a WALL and the played move was >margin worse, the
-position is recorded as a defensive-wall training case (16x-weighted in the
-NN loader). The 300-case corpus was mined this way from 95 games (see the repo
+position is recorded as a defensive-wall training case. ``mine_to_teacher``
+converts these legacy rows to soft top-k targets weighted 2-3x for NN training;
+completed staged depth-3/4 refinements receive 4-5x.
+The original 300-case corpus was mined this way from 95 games (see the repo
 history / logs/mine-cases.log); this script reproduces the method at scale.
 
 Guards:

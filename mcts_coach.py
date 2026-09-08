@@ -8,6 +8,35 @@ import time
 import os
 import coach as c
 
+ROOT_PRIOR_TEMPERATURE = 2.0
+ROOT_UNIFORM_MIX = 0.20
+
+
+def tempered_root_priors(priors, legal, temperature=ROOT_PRIOR_TEMPERATURE,
+                         uniform_mix=ROOT_UNIFORM_MIX):
+    """Return legal, normalized priors with a production exploration floor.
+
+    Neural priors guide MCTS; they must never starve a legal move before the
+    tree has evidence. A square-root temperature flattens overconfident model
+    output and the uniform mixture guarantees every legal action root mass.
+    The raw promotion screen still sees the unmodified model distribution.
+    """
+    legal=sorted(set(legal))
+    if not legal:
+        return {}
+    if (not isinstance(temperature,(int,float)) or not math.isfinite(temperature)
+            or temperature < 1 or not isinstance(uniform_mix,(int,float))
+            or not math.isfinite(uniform_mix) or not 0 <= uniform_mix < 1):
+        raise ValueError('Invalid root-prior tempering')
+    power=1.0/temperature
+    shaped={move:max(0.0,float((priors or {}).get(move,0.0)))**power for move in legal}
+    total=sum(shaped.values())
+    if total<=0:
+        return {move:1.0/len(legal) for move in legal}
+    floor=uniform_mix/len(legal)
+    guided=1.0-uniform_mix
+    return {move:guided*shaped[move]/total+floor for move in legal}
+
 def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=None,
            root_priors=None):
     if not isinstance(time_limit, (int,float)) or not math.isfinite(time_limit) or not 0 < time_limit <= 60:
@@ -45,6 +74,8 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
                       principal_variation=[move,reply], elapsed=time.monotonic()-started)
         return result
     allowed = set(safe or legal)
+    if root_priors:
+        root_priors=tempered_root_priors(root_priors,allowed)
     if time_limit - (time.monotonic() - started) < 0.05:
         # Budget too small to even spawn Node meaningfully; return the safe
         # tactical fallback (a legal move) rather than racing a doomed search.

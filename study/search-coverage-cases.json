@@ -1,0 +1,117 @@
+[
+  {
+    "code": "52s6kd",
+    "source_ply": 18,
+    "nearby_plies": 15,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "vf5",
+      "va6",
+      "hg4",
+      "vd5"
+    ],
+    "must_consider": [
+      "vg3"
+    ]
+  },
+  {
+    "code": "52s6kd",
+    "source_ply": 18,
+    "nearby_plies": 13,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "vf5",
+      "va6"
+    ],
+    "must_consider": [
+      "vg3"
+    ]
+  },
+  {
+    "code": "zjj0bn",
+    "source_ply": 27,
+    "nearby_plies": 24,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "he3",
+      "hd4",
+      "f4",
+      "hf4",
+      "vc5",
+      "ve4",
+      "vc7",
+      "hh4",
+      "hd7",
+      "f6",
+      "hf7",
+      "g6",
+      "g4",
+      "h6",
+      "hh6",
+      "g6",
+      "hf6",
+      "f6"
+    ],
+    "must_consider": [
+      "vg1",
+      "hg3"
+    ]
+  },
+  {
+    "code": "zjj0bn",
+    "source_ply": 27,
+    "nearby_plies": 22,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "he3",
+      "hd4",
+      "f4",
+      "hf4",
+      "vc5",
+      "ve4",
+      "vc7",
+      "hh4",
+      "hd7",
+      "f6",
+      "hf7",
+      "g6",
+      "g4",
+      "h6",
+      "hh6",
+      "g6"
+    ],
+    "must_consider": [
+      "vg1"
+    ]
+  }
+]

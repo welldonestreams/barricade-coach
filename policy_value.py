@@ -20,11 +20,14 @@ SCHEMA=1
 
 
 def code_hash():
-    # Hash both model implementations so any code change invalidates a stale
-    # champion of either schema.
+    # A champion is approved for the complete decision path, not just matrix
+    # inference. Any policy, rules, MCTS, or tactical-ranking change must
+    # invalidate the old arena report before that model can load live.
     import nn_model
-    return hashlib.sha256(
-        Path(__file__).read_bytes() + nn_model.code_hash().encode()).hexdigest()
+    payload=Path(__file__).read_bytes()+nn_model.code_hash().encode()
+    for name in ('coach.py','mcts_coach.py','advice.py'):
+        payload+=ROOT.joinpath(name).read_bytes()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def model_id(model):
@@ -222,7 +225,7 @@ def load_champion_any():
             report = cand.get('report', {})
             if (report.get('promoted') is True and report.get('arena_pairs', 0) >= 100
                     and report.get('score_lower_95', 0) > .5
-                    and report.get('policy_code_sha256') == nn_model.code_hash()):
+                    and report.get('policy_code_sha256') == code_hash()):
                 return cand
         except (OSError, ValueError, TypeError, ImportError):
             return None

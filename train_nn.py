@@ -15,8 +15,8 @@ SOFT teacher-format rows (full top-k distribution + graded value) instead of
 - samples batches STRATIFIED by source class (--teacher-frac of each batch
   from teacher rows, the rest from loss rows), so corpus dominance is
   controlled by sampling, not by multiplying gradient weight,
-- weights mined rows 2-3x, with the upper bound only when the depth-2 search
-  was decisive (large stable score margin => sharp top policy mass).
+- weights ordinary mined rows 2-3x, with the upper bound only when the depth-2
+  search was decisive. Completed staged depth-3/4 refinements receive 4-5x.
 
 The old one-hot .json regression format is still accepted for backwards
 compatibility but demoted to weight 2.0; prefer converted jsonl rows.
@@ -92,7 +92,15 @@ def load_rows(paths, split='train'):
                     g = c.Game(row['history'])
                 except (ValueError, KeyError, TypeError):
                     continue
-                key = (row.get('game_hash'), len(g.history))
+                # Suppress byte-for-byte-equivalent supervision rows while
+                # allowing a deeper teacher to refine the same game position.
+                # The old (game_hash, ply) key discarded all staged depth-3/4
+                # labels because they intentionally retain their shallow
+                # source hash for auditability.
+                policy_sig=tuple(sorted((str(m),float(v)) for m,v in
+                                        (row.get('policy') or {}).items()))
+                teacher_depth=(row.get('teacher') or {}).get('depth')
+                key=(row.get('game_hash'),len(g.history),teacher_depth,policy_sig)
                 if row.get('split') != split or row.get('player_holdout') or key in seen:
                     continue
                 # The repair gate evaluates generalization on positions the
@@ -137,7 +145,10 @@ def build_examples(rows):
             # Mined rows: 2x base, 3x when the search was decisive (top
             # policy mass sharp => large stable score margin).
             top_mass = max(target.values())
-            w = 3.0 if top_mass >= 0.6 else 2.0
+            base = 3.0 if top_mass >= 0.6 else 2.0
+            depth = int((row.get('teacher') or {}).get('depth', 2))
+            depth_weight = 5.0 if depth >= 4 else 4.0 if depth >= 3 else base
+            w = max(w, depth_weight)
         vt = row.get('value')
         if vt is not None:
             vt = max(-1.0, min(1.0, float(vt)))

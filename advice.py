@@ -128,6 +128,8 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         mm = c.candidate_search(hist, side, depth=3, time_limit=seconds,
                                 beam=12,root_moves=mcts_moves)
     mcts_result['crosscheck_depth'] = mm.get('depth', 0)
+    mcts_result['crosscheck_root_candidates'] = mm.get('root_candidates', 0)
+    mcts_result['crosscheck_root_slack'] = mm.get('root_slack')
     if not mm.get('scored') or mm.get('depth', 0) < 2:
         return mcts_result
     mm_best = mm['scored'][0]

@@ -38,7 +38,7 @@ def position_key(g):
 
 
 def convert_case(task):
-    case, search_s, gate_hists = task
+    case, search_s, gate_hists, target_depth, min_depth = task
     code, ply = case.get('code'), case.get('ply')
     try:
         g = c.Game(case['history'])
@@ -48,11 +48,27 @@ def convert_case(task):
     if tuple(hist) in gate_hists:
         return None, f'{code} p{ply}: matches a gate history (excluded)'
     try:
-        r = c.search(hist, g.to_move, 2, search_s)
+        if target_depth <= 2:
+            r = c.search(hist, g.to_move, 2, search_s)
+        else:
+            # Wide tactical scouting prevents the deep beam from excluding a
+            # remote defensive wall before it sees an opponent reply. The
+            # second pass narrows only after that completed depth-2 ranking.
+            scout_s = min(2.5, max(1.0, search_s * .25))
+            scout = c.candidate_search(hist, g.to_move, depth=2,
+                                       time_limit=scout_s, beam=12,
+                                       root_slack=4, wide_root=True)
+            if scout.get('depth', 0) < 2:
+                return None, f'{code} p{ply}: wide scout incomplete'
+            roots = [move for _, move in scout['scored'][:16]]
+            r = c.candidate_search(hist, g.to_move, depth=target_depth,
+                                   time_limit=max(.1, search_s-scout_s), beam=8,
+                                   root_moves=roots, root_slack=4,
+                                   wide_root=False)
     except c.SearchTimeout:
         return None, f'{code} p{ply}: search timeout'
-    if r.get('depth', 0) < 2 or not r.get('scored'):
-        return None, f'{code} p{ply}: depth-2 incomplete'
+    if r.get('depth', 0) < min_depth or not r.get('scored'):
+        return None, f'{code} p{ply}: depth-{min_depth} incomplete'
     scores = r['scored']  # [(score, move)] best-first, lower is better
     best_score = scores[0][0]
     kept = scores[:min(12, len(scores))]
@@ -68,9 +84,14 @@ def convert_case(task):
         game_hash=f'mined:{code}:{ply}',
         split='train',
         player_holdout=False,
+        source='loss',
+        weight=(5.0 if r.get('depth', 2) >= 4 else
+                4.0 if r.get('depth', 2) >= 3 else 1.0),
         history=hist,
         value=math.tanh(-best_score / 250.0),
-        teacher=dict(engine='full-width-minimax', depth=r.get('depth', 2),
+        teacher=dict(engine=('full-width-minimax' if target_depth <= 2
+                             else 'wide-scout-selective-minimax'),
+                     depth=r.get('depth', 2), target_depth=target_depth,
                      nodes=r.get('nodes', 0), tt_hits=r.get('tt_hits', 0),
                      seconds=r.get('elapsed', 0.0),
                      coach_sha256=hashlib.sha256(
@@ -86,19 +107,28 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--search-s', type=float, default=4.0)
     ap.add_argument('--workers', type=int, default=8)
+    ap.add_argument('--depth', type=int, default=2, choices=(2,3,4))
+    ap.add_argument('--min-depth', type=int, default=None, choices=(2,3,4))
+    ap.add_argument('--limit', type=int, default=None,
+                    help='convert only the first N input rows')
     args = ap.parse_args()
 
     import repair_gate
     gate_hists = {tuple(r['history']) for r in repair_gate.rows()}
 
     cases = json.loads(Path(args.input).read_text(encoding='utf-8-sig'))
-    print(json.dumps(dict(input_cases=len(cases), workers=args.workers)), flush=True)
+    if args.limit is not None:
+        cases=cases[:max(0,args.limit)]
+    min_depth=args.min_depth if args.min_depth is not None else args.depth
+    print(json.dumps(dict(input_cases=len(cases), workers=args.workers,
+                          depth=args.depth,min_depth=min_depth)), flush=True)
     start = time.monotonic()
     done = 0
     skipped = []
     out_path = ROOT / args.out
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futs = [pool.submit(convert_case, (case, args.search_s, gate_hists))
+        futs = [pool.submit(convert_case, (case, args.search_s, gate_hists,
+                                           args.depth,min_depth))
                 for case in cases]
         with out_path.open('w', encoding='utf-8') as out:
             for fut in futs:

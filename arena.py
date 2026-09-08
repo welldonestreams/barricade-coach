@@ -17,7 +17,9 @@ Two-part repair gate (2026-09-08):
    at the same budget: the candidate must not reduce repair reliability
    (guided acceptable runs >= unguided per case). Each run records the move,
    elapsed time, simulations, cross-check depth, and whether the tactical
-   override fired.
+   override fired. Repair decisions run serially by default because each live
+   call already launches four Node workers; concurrent calls would benchmark
+   an oversubscribed machine rather than production behavior.
 
 The 100-pair arena still decides broad strength. A candidate is never
 promoted on repair-gate results alone: if the deterministic tactical
@@ -48,7 +50,8 @@ ROOT = Path(__file__).resolve().parent
 # The gate's repair check MUST use positions disjoint from the training set.
 # repair-gate-cases.json is held out from training entirely and reserved for
 # this gate only (see mine_walls.py / teacher_data.py for the exclusion
-# machinery).
+# machinery). Mined loss cases use soft 2-3x targets after conversion, with
+# 4-5x reserved for completed staged depth-3/4 refinements.
 GATE_CASES = repair_gate.CASES
 
 # Frozen raw-screen thresholds and live-check parameters (fixed before any
@@ -202,6 +205,8 @@ def _advise_run(hist, side, seconds, seed, model, acceptable, legal):
     rec = dict(elapsed=round(time.monotonic() - started, 3),
                simulations=result.get('simulations', 0),
                crosscheck_depth=result.get('crosscheck_depth'),
+               crosscheck_root_candidates=result.get('crosscheck_root_candidates'),
+               crosscheck_root_slack=result.get('crosscheck_root_slack'),
                override=result.get('tactical_override'),
                timed_out=bool(result.get('timed_out')),
                fallback=bool(result.get('fallback')),
@@ -223,7 +228,7 @@ def _advise_run(hist, side, seconds, seed, model, acceptable, legal):
 
 
 def live_repair_check(model, paths, seconds=REPAIR_SECONDS, seeds=REPAIR_SEEDS,
-                      workers=2):
+                      workers=1):
     """Production-path repair check, guided vs unguided at equal budget.
 
     Returns one row per case: ``correct`` requires the guided final
@@ -343,7 +348,8 @@ def main():
     ap.add_argument('--regression', nargs='*', default=[GATE_CASES])
     ap.add_argument('--repair-seconds', type=float, default=REPAIR_SECONDS,
                     help='time budget for the live repair check (production default)')
-    ap.add_argument('--repair-workers', type=int, default=2)
+    ap.add_argument('--repair-workers', type=int, default=1,
+                    help='concurrent live checks; keep 1 because each decision uses 4 Node workers')
     # Measurement mode: run the live repair check even when the raw screen
     # fails, so a rejected candidate still gets its production-path numbers.
     ap.add_argument('--measure', action='store_true',
