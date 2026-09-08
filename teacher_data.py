@@ -61,6 +61,30 @@ def record_task(task):
     except (OSError,ValueError,TypeError,KeyError):return None
 
 
+def gate_game_files():
+    """Archive game files that contain a held-out repair-gate position. These
+    games must never be sampled by the teacher: a row drawn from one could leak
+    the exact gate history into training, letting a candidate pass the gate by
+    memorization instead of generalization. Gate cases carry the archive game
+    code (their history is a ply-prefix of that game), so exclusion is a direct
+    shareCode lookup -- fast even over 80k+ files."""
+    try:
+        import repair_gate
+        gate_rows = repair_gate.rows()
+    except ImportError:
+        return set()
+    codes = {row.get('code') for row in gate_rows if isinstance(row, dict) and row.get('code')}
+    if not codes:
+        return set()
+    bad = set()
+    for root in (ROOT / 'study' / 'archive', ROOT / 'study' / 'additional'):
+        for path in root.glob('*.json'):
+            stem = path.stem
+            if stem in codes or stem.casefold() in codes:
+                bad.add(path)
+    return bad
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--positions',type=int,default=1000)
@@ -74,6 +98,13 @@ def main():
     if args.positions<1 or not 1<=args.depth<=8 or not 0<args.seconds<=60 or not 1<=args.workers<=16:ap.error('Invalid limits')
     files=list((ROOT/'study/archive').glob('*.json'))+list((ROOT/'study/additional').glob('*.json'))
     if not files:ap.error('No validated game files')
+    # Exclude whole games that contain a held-out repair-gate position so the
+    # teacher can never leak a gate history into training.
+    bad = gate_game_files()
+    if bad:
+        files = [f for f in files if f not in bad]
+        print(json.dumps(dict(excluded_gate_games=len(bad))), flush=True)
+    if not files:ap.error('All candidate games excluded as repair-gate games')
     rng=random.Random(args.seed);rng.shuffle(files);out=ROOT/args.output;out.parent.mkdir(parents=True,exist_ok=True)
     existing=set()
     if out.exists():

@@ -28,6 +28,11 @@ def load_rows(paths, split='train'):
     train_policy.examples() so teacher and regression files are consumed
     identically."""
     seen = set()
+    try:
+        import repair_gate
+        held_out_histories = repair_gate.histories()
+    except ImportError:
+        held_out_histories = frozenset()
     for p in paths:
         p = Path(p)
         if p.suffix == '.json':
@@ -65,6 +70,10 @@ def load_rows(paths, split='train'):
                     continue
                 key = (row.get('game_hash'), len(g.history))
                 if row.get('split') != split or row.get('player_holdout') or key in seen:
+                    continue
+                # The repair gate evaluates generalization on positions the
+                # candidate must NEVER have seen in training.
+                if tuple(g.history) in held_out_histories:
                     continue
                 seen.add(key)
                 yield row
@@ -139,8 +148,6 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
     eps = 1e-8
 
     def adam_step(params, grads, ms, vs, lr):
-        nonlocal t
-        t += 1
         for k in params:
             ms[k] = b1e * ms[k] + (1 - b1e) * grads[k]
             vs[k] = b2e * vs[k] + (1 - b2e) * grads[k] ** 2
@@ -204,7 +211,11 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907, verbose=
                 loss /= cnt
                 tot_loss += loss
                 n += 1
-            lr_t = lr / (1 + 0.05 * (epoch * (len(examples) // batch) + n))
+            # Adam adapts per-parameter; a constant LR is correct here. The old
+            # schedule decayed to ~0.0001 within a few epochs and stalled policy
+            # learning (loss plateaued ~2.77).
+            t += 1  # one optimizer step per batch (policy+value share the step)
+            lr_t = lr
             adam_step({'W1': pW1, 'b1': pb1, 'W2': pW2, 'b2': pb2}, gp, m_p, v_p, lr_t)
             adam_step({'W1': vW1, 'b1': vb1, 'W2': vW2, 'b2': vb2}, gv, m_v, v_v, lr_t)
         if verbose:
