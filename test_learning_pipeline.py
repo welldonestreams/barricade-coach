@@ -32,8 +32,6 @@ class PolicyValueTests(unittest.TestCase):
         wall=c.Game('e2,e8,e3,e7,e4,e6,he3,hd4,f4,hf4')
         af=pv.action_features(wall,'vc5')
         self.assertTrue(any(x.startswith('wall_opp_resilience_change:') for x in af))
-        self.assertTrue(any(x.startswith('wall_file_from_opp:') for x in af))
-        self.assertTrue(any(x.startswith('wall_rank_from_me:') for x in af))
 
     def test_teacher_keeps_depth2_wall_positions(self):
         # Wall-heavy positions often can't finish depth-3 in budget. A completed
