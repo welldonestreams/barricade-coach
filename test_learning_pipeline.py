@@ -141,5 +141,18 @@ class PolicyValueTests(unittest.TestCase):
         self.assertEqual(report['games'],4)
         self.assertEqual(len(report['records']),4)
 
+    def test_arena_requires_known_loss_repairs_before_promotion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case=Path(tmp)/'case.json'
+            case.write_text(json.dumps([dict(code='case',ply=0,history=[],best='e2')]),encoding='utf-8')
+            model=pv.new_model();model['policy']['ab:a:e2']=8
+            rows=arena.regression_results(model,[case])
+        self.assertEqual(rows,[dict(code='case',ply=0,expected='e2',chosen='e2',correct=True)])
+        report=dict(arena_pairs=100,score_lower_95=.6,illegal_moves=0,p95_seconds=1,
+                    regression_cases=1,regression_correct=1)
+        self.assertTrue(arena.passes_promotion(report))
+        report['regression_correct']=0
+        self.assertFalse(arena.passes_promotion(report))
+
 
 if __name__=='__main__':unittest.main()

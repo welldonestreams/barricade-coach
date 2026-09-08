@@ -60,6 +60,47 @@ def lower95(values):
     return statistics.mean(values)-1.96*statistics.stdev(values)/math.sqrt(len(values))
 
 
+def regression_results(model, paths):
+    """Check the model's live root preference on confirmed loss positions.
+
+    The arena's held-out games measure broad strength.  These cases guard a
+    separate promise: a promoted model must retain the tactical repairs made
+    after a real bad recommendation.  Use ``search_priors`` because that is
+    exactly the policy/value signal passed to live MCTS at the root.
+    """
+    rows=[]
+    for path in paths:
+        try:
+            cases=json.loads(Path(path).read_text(encoding='utf-8'))
+        except (OSError,json.JSONDecodeError):
+            continue
+        if not isinstance(cases,list):
+            continue
+        for case in cases:
+            if not isinstance(case,dict) or not case.get('best'):
+                continue
+            try:
+                game=c.Game(case['history'])
+            except (KeyError,TypeError,ValueError):
+                continue
+            legal=game.moves(game.to_move);expected=case['best']
+            if expected not in legal:
+                continue
+            priors=pv.search_priors(model,game,legal)
+            chosen=max(priors,key=priors.get) if priors else None
+            rows.append(dict(code=case.get('code'),ply=case.get('ply'),
+                             expected=expected,chosen=chosen,
+                             correct=chosen==expected))
+    return rows
+
+
+def passes_promotion(report):
+    return (report['arena_pairs']>=100 and report['score_lower_95']>.5
+            and report['illegal_moves']==0 and report['p95_seconds']<5
+            and report['regression_cases']>0
+            and report['regression_correct']==report['regression_cases'])
+
+
 def evaluate(model,starts,seconds,seed,baselines=None,workers=2):
     baselines=baselines or [('raw-mcts',False)]
     tasks=[(baseline_name,baseline,i,hist) for baseline_name,baseline in baselines
@@ -93,6 +134,8 @@ def main():
     ap.add_argument('--workers',type=int,default=2)
     ap.add_argument('--frozen',nargs='*',default=[],help='older policy models included in the arena')
     ap.add_argument('--player-holdout-only',action='store_true')
+    ap.add_argument('--regression',nargs='*',default=[ROOT/'study'/'tactical-loss-cases.json',
+                                                        ROOT/'study'/'recent-loss-cases.json'])
     args=ap.parse_args();model=pv.load(args.candidate)
     starts=holdout_positions(args.targets,args.pairs,args.seed,args.player_holdout_only)
     if len(starts)<args.pairs:ap.error(f'Need {args.pairs} unique held-out starts; found {len(starts)}')
@@ -103,8 +146,11 @@ def main():
                   workers=args.workers,
                   baselines=[name for name,_ in baselines],
                   promoted=False,limitation='Frozen unguided MCTS field; no human Elo estimate')
-    passed=(report['arena_pairs']>=100 and report['score_lower_95']>.5
-            and report['illegal_moves']==0 and report['p95_seconds']<5)
+    regressions=regression_results(model,args.regression)
+    report.update(regression_cases=len(regressions),
+                  regression_correct=sum(row['correct'] for row in regressions),
+                  regressions=regressions)
+    passed=passes_promotion(report)
     report['passed']=passed
     if args.promote and passed:
         model['report']={**{k:v for k,v in report.items() if k!='records'},'promoted':True}
