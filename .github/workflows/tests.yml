@@ -24,4 +24,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+      # schema-2 neural tests (test_learning_pipeline) import numpy lazily in
+      # nn_model; the training/arena pipeline depends on it.
+      - run: python -m pip install --quiet numpy
       - run: python -m unittest -v
