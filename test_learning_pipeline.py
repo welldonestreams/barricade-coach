@@ -159,6 +159,26 @@ class PolicyValueTests(unittest.TestCase):
             # and the expected move must be legal on its position
             self.assertIn(case['best'],c.Game(case['history']).moves(c.Game(case['history']).to_move))
 
+    def test_repair_gate_histories_are_filtered_from_every_training_source(self):
+        gate_case=json.loads((Path(__file__).with_name('study')/'repair-gate-cases.json').read_text())[0]
+        normal=dict(history=['e2'],split='train',game_hash='normal',policy={'e8':1})
+        leaked=dict(history=gate_case['history'],split='train',game_hash='leaked',
+                    policy={gate_case['best']:1})
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'teacher.jsonl'
+            path.write_text('\n'.join(json.dumps(row) for row in (leaked,normal)),encoding='utf-8')
+            loaded=list(train_policy.examples([path]))
+        self.assertEqual([row['game_hash'] for row in loaded],['normal'])
+
+    def test_arena_holdout_excludes_repair_gate_histories(self):
+        gate_case=json.loads((Path(__file__).with_name('study')/'repair-gate-cases.json').read_text())[0]
+        rows=[dict(history=gate_case['history'],player_holdout=True),
+              dict(history=['e2'],player_holdout=True)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'teacher.jsonl'
+            path.write_text('\n'.join(json.dumps(row) for row in rows),encoding='utf-8')
+            self.assertEqual(arena.holdout_positions([path],1,1,player_only=True),[['e2']])
+
     def test_arena_regression_default_is_held_out_file(self):
         # arena's default --regression must point at the held-out gate file,
         # NOT the training loss files. (Guards the fix against drift.)

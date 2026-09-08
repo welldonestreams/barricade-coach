@@ -13,6 +13,7 @@ from pathlib import Path
 import advice
 import coach as c
 import policy_value as pv
+import repair_gate
 
 ROOT=Path(__file__).resolve().parent
 
@@ -21,7 +22,7 @@ ROOT=Path(__file__).resolve().parent
 # examples (see improve.py inputs and train_policy.py); testing on them would
 # reward memorization, not generalization. repair-gate-cases.json is held out
 # from training entirely and reserved for this gate only.
-GATE_CASES = ROOT/'study'/'repair-gate-cases.json'
+GATE_CASES = repair_gate.CASES
 
 
 def decision(g,seconds,seed,model):
@@ -45,7 +46,7 @@ def play(history,candidate_side,model,seconds,seed,max_plies=140,opponent=False)
 
 
 def holdout_positions(paths,count,seed,player_only=False):
-    rows=[];seen=set();rng=random.Random(seed)
+    rows=[];seen=set();rng=random.Random(seed);repair_histories=repair_gate.histories()
     for path in paths:
         with Path(path).open(encoding='utf-8') as src:
             for line in src:
@@ -55,6 +56,9 @@ def holdout_positions(paths,count,seed,player_only=False):
                     hist=c.Game(row['history']).history
                 except (ValueError,KeyError,TypeError,json.JSONDecodeError):continue
                 key=','.join(hist)
+                # Keep the arena and the separate repair gate statistically
+                # independent even when common openings recur in archive games.
+                if tuple(hist) in repair_histories:continue
                 eligible=row.get('player_holdout') if player_only else (row.get('split')=='holdout')
                 if eligible and key not in seen:
                     seen.add(key);rows.append(hist)

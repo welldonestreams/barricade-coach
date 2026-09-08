@@ -189,9 +189,14 @@ target without duplicating positions. Resume a stopped run with
 
 `arena.py` plays a candidate against unguided MCTS and optional frozen models from
 the same held-out starts with colors exchanged. It records outcomes, illegal moves,
-latency, model/code hashes, and a paired confidence bound. `--promote` writes the
+latency, model/code hashes, a paired confidence bound, and the candidate's raw
+policy/value preference on 12 confirmed repair positions. `--promote` writes the
 live champion only with at least 100 pairs, a lower 95% score bound above 50%, zero
-illegal moves, and p95 under five seconds. Failed candidates remain isolated.
+illegal moves, p95 under five seconds, and all 12 repair choices correct. The repair
+positions live in `study/repair-gate-cases.json`; `train_policy.py` excludes their
+full histories from every input source, and the arena excludes them from its paired
+starts. This prevents both training and arena leakage from common opening states.
+Failed candidates remain isolated.
 
 `league_selfplay.py` mixes the promoted champion, raw MCTS, and supplied frozen
 models, writing policy distributions plus final outcomes without modifying live

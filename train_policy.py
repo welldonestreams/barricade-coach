@@ -10,12 +10,13 @@ from pathlib import Path
 
 import coach as c
 import policy_value as pv
+import repair_gate
 
 ROOT=Path(__file__).resolve().parent
 
 
 def examples(paths,split='train'):
-    seen=set()
+    seen=set();held_out_histories=repair_gate.histories()
     for path in paths:
         path=Path(path)
         if path.suffix=='.json':
@@ -43,6 +44,10 @@ def examples(paths,split='train'):
                     row={**row,'split':'train','game_hash':loaded.get('game_hash') or stable}
                 try:g=c.Game(row['history'])
                 except (ValueError,KeyError,TypeError):continue
+                # The repair gate evaluates generalization on these positions.
+                # Filter every source, including a harvested teacher JSONL, so a
+                # matching opening state cannot leak in through another game.
+                if tuple(g.history) in held_out_histories:continue
                 key=(row.get('game_hash'),len(g.history))
                 if row.get('split')!=split or row.get('player_holdout') or key in seen:continue
                 seen.add(key);yield row
