@@ -52,6 +52,9 @@ def explain(g, result):
         if result.get('goal_plies') is not None: text+=f" in {result['goal_plies']} plies with optimal play"
         return text+'. Includes jumps and whose turn it is; excludes clocks.'
     if result.get('engine')=='mcts':
+        warning=result.get('position_warning')
+        if warning:
+            text+=' '+warning
         sims=result.get('simulations',0)
         if sims:
             text+=f' {sims} simulated games searched end-to-end.'
@@ -142,7 +145,7 @@ def query(params, record_trace=True):
     payload=dict(position=actual, history=g.history, to_move=actual['side'],
                 legal=legal, top=result['scored'][:5], why=explain(g,result),
                 winner=g.winner, request_id=params.get('request_id'),
-                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies','simulations','workers','fallback') if k in result},
+                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies','simulations','workers','fallback','position_warning','position_warning_depth') if k in result},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
     payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','crosscheck_root_candidates','crosscheck_initial_root_candidates','crosscheck_staged_root_narrowing','crosscheck_stopped_on_decisive_pawn','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
     payload['search'].update(early=early,budget=budget,requested_seconds=seconds)

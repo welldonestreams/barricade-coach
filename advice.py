@@ -153,6 +153,12 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
     if not mm.get('scored') or mm.get('depth', 0) < 2:
         return mcts_result
     mm_best = mm['scored'][0]
+    if (game.remaining[side]==0 and sum(game.remaining.values())<=3
+            and mm.get('depth',0)>=5 and mm_best[0]>=500):
+        mcts_result['position_warning']=(
+            f"Position looks badly losing; no saving line was found through "
+            f"the completed depth-{mm['depth']} check. The move shown is the best resistance found.")
+        mcts_result['position_warning_depth']=mm['depth']
     mcts_top = mcts_result['scored'][0][1]
     mm_scores = {m: s for s, m in mm['scored']}
     if mcts_top not in mm_scores or mm_best[1] == mcts_top:

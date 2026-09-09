@@ -95,6 +95,17 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertIn('not a proven win', text)
         self.assertNotIn('exact wall search', text)
 
+    def test_deep_losing_endgame_is_presented_as_best_resistance(self):
+        hist='e2,e8,e3,e7,e4,e6,e5,e4,he3,he5,hb5,vd5,vc6,d4,hc3,hg5,ha3,he4,vd3,vh4,hh2,vb4,f5,hh8,g5,hf8,h5,hd8,vg3,hb8,h4,d5,h3,d6,i3,d7,i4,e7,i5,f7,i6,g7,h6,h7,h8'.split(',')
+        mm=dict(scored=[(862,'g7'),(974,'g8')],depth=5,
+                principal_variation=['g7','vg6','g8','f8','h8'])
+        with patch.object(mcts_coach,'search',return_value=mcts('g7')), \
+             patch.object(c,'candidate_search',return_value=mm):
+            result=advice.advise(hist,engine='mcts',seconds=4)
+        self.assertEqual(result['scored'][0][1],'g7')
+        self.assertIn('best resistance',result['position_warning'])
+        self.assertIn('looks badly losing',live_coach.explain(c.Game(hist),result))
+
     def test_benchmark_calls_live_decision_path(self):
         with patch.object(live_coach, 'query', return_value=dict(top=[(0,'e2')])) as query:
             move,_=benchmark_match.coach_move([], c.RED, 4)

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barricade Live Coach
 // @namespace    welldonestreams
-// @version      1.4.0
+// @version      1.5.0
 // @description  Verified board advice, visible highlights and factual explanations
 // @match        https://barricade.gg/*
 // @grant        GM_getValue
@@ -61,7 +61,7 @@
   const cache=new Map();
   const panel=document.createElement('div'); panel.id='bc-coach';
   panel.style.cssText='position:fixed;right:16px;top:16px;z-index:2147483000;background:#111827f5;color:#f9fafb;border:1px solid #64748b;border-radius:12px;padding:12px;max-width:350px;font:14px system-ui;box-shadow:0 4px 20px #0008';
-  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.4</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
+  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.5</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
   document.body.appendChild(panel);
   const el=id=>panel.querySelector('#bc-'+id);
   function clear() { highlights.forEach(e=>e.remove()); highlights=[]; }
@@ -238,7 +238,8 @@
     }
     const best=data.top[0]?.[1];if(!best)return;
     lastAdvice={data,key:positionKey(snapshot)};
-    el('move').textContent='Play '+best;
+    el('move').textContent=(data.search?.position_warning?'Best try: ':'Play ')+best;
+    el('move').style.color=data.search?.position_warning?'#fbbf24':'#6ee7b7';
     el('status').textContent=`You are ${myColor} · ${(data.search.elapsed).toFixed(2)}s`;
     el('why').textContent=data.why; draw(best,snapshot.grid);
     const used=data.opponent_evidence.some(r=>r.move===best);

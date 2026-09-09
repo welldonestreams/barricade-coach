@@ -123,12 +123,12 @@ The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
 
 
-## Firefox / Tampermonkey overlay (1.4)
+## Firefox / Tampermonkey overlay (1.5)
 
 Run START-COACH.cmd, then replace the existing Tampermonkey script with
 `overlay/barricade-live-coach.user.js` (also served at
 http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
-Do not run the old and new scripts together. Version 1.4 appears in the panel.
+Do not run the old and new scripts together. Version 1.5 appears in the panel.
 
 
 The overlay independently checks the numbered move list, pawn squares, placed
