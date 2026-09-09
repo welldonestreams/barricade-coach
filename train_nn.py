@@ -26,6 +26,8 @@ import json
 import math
 import random
 import time
+import os
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import coach as c
@@ -109,6 +111,7 @@ def load_rows(paths, split='train'):
                     continue
                 seen.add(key)
                 row.setdefault('source', source)
+                row['_game']=g  # reuse validated replay during canonical merge
                 yield row
 
 
@@ -118,7 +121,19 @@ def position_key(g):
             g.remaining[c.RED], g.remaining[c.BLUE], g.to_move)
 
 
-def build_examples(rows):
+def _featurize(acc):
+    pz=sum(acc['policy'].values())
+    if not pz:return None
+    policy={m:v/pz for m,v in acc['policy'].items()}
+    context=nn.action_context(acc['g'])
+    return dict(sv=nn.state_features(acc['g']),legal=acc['legal'],
+                av={m:nn.action_features(acc['g'],m,context=context)
+                    for m in acc['legal']},target=policy,
+                vt=(acc['vt_acc']/acc['w_acc']) if acc['w_acc'] else None,
+                weight=min(12.0,max(1.0,acc['w_acc'])),kind=acc['kind'])
+
+
+def build_examples(rows,workers=1):
     """Return list of dicts: state_vec, legal[], action_vecs, policy_probs,
     value_target, weight, kind. Duplicate canonical board states from
     different sources are merged: target distributions are averaged
@@ -128,7 +143,7 @@ def build_examples(rows):
     order = []
     for row in rows:
         try:
-            g = c.Game(row['history'])
+            g=row.get('_game') or c.Game(row['history'])
         except (ValueError, KeyError, TypeError):
             continue
         legal = g.moves(g.to_move)
@@ -165,27 +180,24 @@ def build_examples(rows):
                        vt_acc=0.0, w_acc=0.0, kind=kind, g=g)
             merged[key] = acc
             order.append(key)
+        elif kind=='loss':
+            # Any hard-position supervision keeps the merged state in the
+            # stratified loss pool. Previously the first ordinary teacher row
+            # won this tag, so overlapping hard examples quietly disappeared
+            # from the guaranteed hard-example share of each batch.
+            acc['kind']='loss'
         acc['policy'] = acc['policy'] or {}
         for m, pr in target.items():
             acc['policy'][m] = acc['policy'].get(m, 0.0) + pr * w
         if vt is not None:
             acc['vt_acc'] += vt * w
             acc['w_acc'] += w
-    out = []
-    for key in order:
-        acc = merged[key]
-        pz = sum(acc['policy'].values())
-        if not pz:
-            continue
-        policy = {m: v / pz for m, v in acc['policy'].items()}
-        out.append(dict(sv=nn.state_features(acc['g']),
-                        legal=acc['legal'],
-                        av={m: nn.action_features(acc['g'], m) for m in acc['legal']},
-                        target=policy,
-                        vt=(acc['vt_acc'] / acc['w_acc']) if acc['w_acc'] else None,
-                        weight=min(12.0, max(1.0, acc['w_acc'])),
-                        kind=acc['kind']))
-    return out
+    pending=[merged[key] for key in order]
+    if workers>1 and len(pending)>1:
+        with ProcessPoolExecutor(max_workers=min(16,int(workers))) as pool:
+            made=pool.map(_featurize,pending,chunksize=8)
+            return [row for row in made if row is not None]
+    return [row for row in map(_featurize,pending) if row is not None]
 
 
 def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907,
@@ -241,7 +253,7 @@ def train(model, examples, epochs=8, lr=0.003, batch=64, seed=20260907,
     losses = [ex for ex in examples if ex['kind'] == 'loss']
     stratify = bool(teachers) and bool(losses)
     if not stratify:
-        teachers = examples if not losses else teachers
+        teachers = examples
     for epoch in range(epochs):
         rng.shuffle(teachers)
         rng.shuffle(losses)
@@ -340,16 +352,22 @@ def main():
     ap.add_argument('--batch', type=int, default=64)
     ap.add_argument('--seed', type=int, default=20260908)
     ap.add_argument('--teacher-frac', type=float, default=0.7)
+    ap.add_argument('--hidden',type=int,default=nn.HIDDEN,
+                    help='hidden units in each policy/value network (16-1024)')
+    ap.add_argument('--feature-workers',type=int,
+                    default=max(1,min(8,(os.cpu_count() or 2)-2)))
     ap.add_argument('--output', default=None)
     args = ap.parse_args()
+    if not 16<=args.hidden<=1024 or not 1<=args.feature_workers<=16:
+        ap.error('--hidden must be 16-1024 and --feature-workers 1-16')
     rows = list(load_rows(args.inputs))
     print(json.dumps(dict(rows=len(rows))), flush=True)
-    ex = build_examples(rows)
+    ex = build_examples(rows,workers=args.feature_workers)
     kinds = {}
     for e in ex:
         kinds[e['kind']] = kinds.get(e['kind'], 0) + 1
     print(json.dumps(dict(examples=len(ex), kinds=kinds)), flush=True)
-    model = nn.new_model(args.seed)
+    model = nn.new_model(args.seed,hidden=args.hidden)
     model = train(model, ex, epochs=args.epochs, lr=args.lr, batch=args.batch,
                   seed=args.seed, teacher_frac=args.teacher_frac)
     out = Path(args.output) if args.output else ROOT / 'memory' / 'candidates' / f'{time.time_ns()}' / 'model.json'

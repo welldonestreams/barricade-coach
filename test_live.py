@@ -55,6 +55,25 @@ class LiveTests(unittest.TestCase):
         self.assertNotIn('d2',[m for _,m in d['top']])
         self.assertIn('route',d['why'])
 
+    def test_live_passes_reproducible_seed_and_reports_opening_budget(self):
+        g=c.Game();p=live_coach.position(g)
+        fake=dict(scored=[(-1,'e2')],engine='mcts',simulations=12,workers=4,
+                  elapsed=.1,timed_out=False,principal_variation=['e2'])
+        with patch.object(advice,'advise',return_value=fake) as search:
+            d=live_coach.query({**p,'walls':'','h':'','seconds':'3',
+                                'opening_seconds':'2.25','seed':'123'},
+                               record_trace=False)
+        self.assertEqual(search.call_args.kwargs['seed'],123)
+        self.assertEqual(d['search']['budget'],2.25)
+        self.assertEqual(d['search']['simulations'],12)
+        self.assertTrue(d['search']['early'])
+
+    def test_live_rejects_invalid_seed_and_opening_budget(self):
+        p=live_coach.position(c.Game());params={**p,'walls':'','h':''}
+        for extra in ({'seed':'bad'},{'seed':'-1'},{'opening_seconds':'0'},
+                      {'opening_seconds':'16'}):
+            with self.assertRaises(ValueError):live_coach.query({**params,**extra})
+
     def test_opponent_model_validates_whole_game_and_matches_position(self):
         good=dict(player1Username='Test',player2Username='Other',winner='1',historyCsv='e2,e8,e3')
         bad={**good,'historyCsv':'e2,e8,d9'}

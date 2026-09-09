@@ -77,7 +77,8 @@ class TacticalCrosscheckTests(unittest.TestCase):
         result=mcts('d3')
         with patch.object(c, 'candidate_search', side_effect=AssertionError('expired')):
             self.assertIs(advice._tactical_crosscheck([], 0, result, 0), result)
-        mm=dict(scored=[(0,'hh5'),(80,'d3')],depth=2,principal_variation=['hh5'])
+        mm=dict(scored=[(0,'hh5'),(advice.TACTICAL_GAP_CP,'d3')],
+                depth=2,principal_variation=['hh5'])
         with patch.object(c, 'candidate_search', return_value=mm):
             self.assertNotIn('tactical_override', advice._tactical_crosscheck([],0,result,1))
 

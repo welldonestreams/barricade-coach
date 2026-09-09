@@ -318,6 +318,30 @@ class PolicyValueTests(unittest.TestCase):
             self.assertTrue(set(row['must_consider']).issubset(legal))
             self.assertTrue(set(row['must_consider']).issubset(wide))
 
+    def test_wide_root_narrows_only_after_complete_coverage_pass(self):
+        case=json.loads((Path(__file__).with_name('study')/
+                         'repair-gate-cases.json').read_text())[-1]
+        result=c.candidate_search(case['history'],c.BLUE,depth=3,
+                                  time_limit=8,beam=8,
+                                  root_moves=['e2','hg4'],wide_root=True)
+        self.assertGreaterEqual(result['depth'],2)
+        self.assertGreater(result['initial_root_candidates'],
+                           result['root_candidates'])
+        self.assertTrue(result['staged_root_narrowing'])
+        self.assertIn('e2',[move for _,move in result['scored']])
+        self.assertIn('hg4',[move for _,move in result['scored']])
+
+    def test_complete_depth2_pawn_margin_is_not_lost_to_deeper_tie(self):
+        case=next(row for row in json.loads((Path(__file__).with_name('study')/
+                       'repair-gate-cases.json').read_text())
+                  if row['code']=='52s6kd' and row['ply']==16)
+        result=c.candidate_search(case['history'],c.BLUE,depth=3,time_limit=8,
+                    beam=8,root_moves=['e5','vb5'],wide_root=True,
+                    preserve_depth2_pawn_margin=75)
+        self.assertEqual(result['depth'],2)
+        self.assertEqual(result['scored'][0][1],'e5')
+        self.assertTrue(result['stopped_on_decisive_pawn'])
+
     def test_repair_gate_rows_fail_closed_on_bad_file(self):
         # rows()/histories() silently returning () on a broken gate file would
         # disable the training-side leakage filter. They must raise instead.
@@ -362,6 +386,24 @@ class PolicyValueTests(unittest.TestCase):
         self.assertIsNotNone(pv.model_id(pv.new_model()))
         self.assertEqual(len(pv.code_hash()),64)
 
+    def test_neural_action_features_include_wall_tempo_and_geometry(self):
+        import nn_model
+        g=c.Game('e2,e8,e3,e7,e4,e6'.split(','))
+        wall=nn_model.action_features(g,'hd3')
+        pawn=nn_model.action_features(g,'e5')
+        self.assertEqual(len(wall),len(pawn))
+        self.assertEqual(len(wall),11)
+        self.assertTrue(all(isinstance(v,float) for v in wall))
+
+    def test_neural_loader_rejects_stale_or_malformed_dimensions(self):
+        import nn_model
+        model=nn_model.new_model(seed=5)
+        model['metadata']['dims']['action']-=1
+        with self.assertRaises(ValueError):nn_model.validate(model)
+        model=nn_model.new_model(seed=5)
+        model['policy']['W1'].pop()
+        with self.assertRaises(ValueError):nn_model.validate(model)
+
     def _write_rows(self, tmp, name, rows):
         path=Path(tmp)/name
         path.write_text('\n'.join(json.dumps(r) for r in rows),encoding='utf-8')
@@ -386,6 +428,7 @@ class PolicyValueTests(unittest.TestCase):
             self.assertEqual(sources,{'teacher','loss'})
             ex=train_nn.build_examples(rows)
             self.assertEqual(len(ex),1,'canonical duplicates must merge')
+            self.assertEqual(ex[0]['kind'],'loss','hard supervision must retain stratified sampling')
             self.assertIn('hd3',ex[0]['target'])
             self.assertGreater(ex[0]['weight'],1.0,'merged rows keep combined weight')
 
@@ -450,6 +493,14 @@ class PolicyValueTests(unittest.TestCase):
             m=train_nn.train(m,ex,epochs=2,batch=16,seed=7,verbose=False)
             self.assertTrue(m['metadata'].get('stratified'))
             self.assertEqual(m['metadata'].get('teacher_frac'),0.7)
+
+    def test_train_accepts_loss_only_corpus(self):
+        rows=[dict(history=[],policy={'e2':1.0},value=.2,source='loss')]
+        examples=train_nn.build_examples(rows)
+        import nn_model
+        model=train_nn.train(nn_model.new_model(seed=8),examples,epochs=1,
+                             batch=4,seed=8,verbose=False)
+        self.assertEqual(model['metadata']['examples'],1)
 
 
 

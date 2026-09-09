@@ -471,7 +471,8 @@ def search_position(red_sq, blue_sq, walls, side, depth=2, time_limit=5.0,
 
 
 def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
-                     root_moves=(), root_slack=4, wide_root=True):
+                     root_moves=(), root_slack=4, wide_root=True,
+                     preserve_depth2_pawn_margin=None):
     """Deterministic selective minimax for wall-rich live positions.
 
     Full-width depth two often cannot finish inside the live safeguard budget
@@ -484,6 +485,10 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
     if (not 1 <= depth <= 6 or not 2 <= beam <= 32
             or not isinstance(root_slack, int) or not 2 <= root_slack <= 8):
         raise ValueError('Invalid candidate-search limits')
+    if (preserve_depth2_pawn_margin is not None and
+            (not isinstance(preserve_depth2_pawn_margin,(int,float)) or
+             preserve_depth2_pawn_margin<0)):
+        raise ValueError('Invalid depth-2 pawn margin')
     started=time.monotonic();deadline=started+time_limit;g=Game(history)
     side=g.to_move if side is None else side
     if side!=g.to_move:raise ValueError('Wrong side to move')
@@ -515,7 +520,7 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
         keep.update(move for _,move,_ in rows if len(move)==2)
         keep.update(move for move in forced if move in {row[1] for row in rows})
         return [row for row in rows if row[1] in keep]
-    roots=candidates(g,root_moves,root=True)
+    roots=candidates(g,root_moves,root=True);initial_root_candidates=len(roots)
     scored=[(score,move) for score,move,_ in roots];scored.sort()
     completed=1;pv=[scored[0][1]] if scored else []
     def minimax(state,left,alpha,beta,ply):
@@ -532,7 +537,7 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
             else:beta=min(beta,value)
             if alpha>=beta:break
         return value,line
-    timed_out=False
+    timed_out=False;stopped_on_decisive_pawn=False
     try:
         for current in range(2,depth+1):
             iteration=[];lines={}
@@ -543,11 +548,35 @@ def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
             scored=iteration;completed=current;pv=lines[scored[0][1]]
             order={move:i for i,(_,move) in enumerate(scored)}
             roots.sort(key=lambda row:order[row[1]])
+            if current==2 and preserve_depth2_pawn_margin is not None and scored:
+                best_score,best_move=scored[0]
+                wall_scores=[score for score,move in scored if len(move)==3]
+                if (len(best_move)==2 and wall_scores and
+                        min(wall_scores)-best_score>preserve_depth2_pawn_margin):
+                    # A complete all-wall coverage pass already found a clear
+                    # pawn tempo. Do not let a selective deeper iteration turn
+                    # that margin into a tie which MCTS then breaks by spending
+                    # a wall. This preserves 52s6kd ply 16.
+                    stopped_on_decisive_pawn=True
+                    break
+            if current==2 and wide_root and len(roots)>beam:
+                # Depth 2 is the coverage pass: every relevant root wall was
+                # compared against an opponent reply. Carrying all of them
+                # into depth 3 made the tactical reserve expire before it
+                # could separate tied wall families. Narrow only after that
+                # complete comparison, retaining every externally supplied
+                # MCTS candidate so an override always compares like for like.
+                forced=set(root_moves)
+                keep={move for _,move,_ in roots[:beam]}|forced
+                roots=[row for row in roots if row[1] in keep]
     except SearchTimeout:
         timed_out=True
     return dict(scored=scored,depth=completed,nodes=nodes,elapsed=time.monotonic()-started,
                 timed_out=timed_out,principal_variation=pv,selective=True,beam=beam,
-                root_candidates=len(roots),root_slack=root_slack,wide_root=wide_root)
+                root_candidates=len(roots),initial_root_candidates=initial_root_candidates,
+                staged_root_narrowing=initial_root_candidates>len(roots),
+                stopped_on_decisive_pawn=stopped_on_decisive_pawn,
+                root_slack=root_slack,wide_root=wide_root)
 
 
 def _search_game(g, side, depth, time_limit, started, deadline):

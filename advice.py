@@ -16,7 +16,11 @@ import learning
 # minimax (same legal-move model) catches those. We only override when minimax
 # sees a move decisively better than MCTS's top pick, and only when walls are on
 # the board (MCTS is fine in the open opening/middlegame).
-TACTICAL_GAP_CP = 80.0
+# A measured blue-side loss missed the defensive wall family by four points at
+# the old 80-point boundary, then spent the wall two plies too late. Keep the
+# safeguard conservative while including that independently reproduced 76-point
+# tempo loss.
+TACTICAL_GAP_CP = 75.0
 
 
 @lru_cache(maxsize=1)
@@ -54,7 +58,17 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         import policy_value
         model=policy_value.load_champion() if policy_model is None else policy_model
         priors=policy_value.search_priors(model,game) if model else None
-        reserve=min(2.2, seconds*.5) if game.walls and any(game.remaining.values()) else 0
+        # Wall-rich positions need enough deterministic time for the staged
+        # coverage search to finish depth 3. A 50/50 split left it a few
+        # milliseconds short on the measured blue tempo loss and returned a
+        # depth-2 tie. MCTS still receives tens of thousands of root-parallel rollouts
+        # at the normal four-second request. Short requests retain the prior
+        # 50/50 split; otherwise the tactical reserve starves broad MCTS.
+        if game.walls and any(game.remaining.values()):
+            reserve=(min(3.0,seconds*.75) if seconds>=3.8 else
+                     min(2.2,seconds*.5))
+        else:
+            reserve=0
         budget=max(.001, deadline-time.monotonic()-reserve)
         result=(mcts_coach.search(hist,side,budget,root_priors=priors)
                 if rollouts==60000 and seed is None else
@@ -126,9 +140,13 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         mm['selective']=False
     else:
         mm = c.candidate_search(hist, side, depth=3, time_limit=seconds,
-                                beam=12,root_moves=mcts_moves)
+                                beam=8,root_moves=mcts_moves,
+                                preserve_depth2_pawn_margin=TACTICAL_GAP_CP)
     mcts_result['crosscheck_depth'] = mm.get('depth', 0)
     mcts_result['crosscheck_root_candidates'] = mm.get('root_candidates', 0)
+    mcts_result['crosscheck_initial_root_candidates'] = mm.get('initial_root_candidates',0)
+    mcts_result['crosscheck_staged_root_narrowing'] = mm.get('staged_root_narrowing',False)
+    mcts_result['crosscheck_stopped_on_decisive_pawn'] = mm.get('stopped_on_decisive_pawn',False)
     mcts_result['crosscheck_root_slack'] = mm.get('root_slack')
     if not mm.get('scored') or mm.get('depth', 0) < 2:
         return mcts_result

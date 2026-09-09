@@ -176,10 +176,11 @@ and rotation without playing a real match.
 
 ## Gated policy/value improvement
 
-The dependency-free learning pipeline uses sparse board/action features, so it
-runs on the existing Python installation. `teacher_data.py` samples legal archive
-positions and saves only completed full-width search targets. `train_policy.py`
-learns both a legal-move policy and an outcome value into an isolated candidate.
+The baseline learning pipeline uses dependency-free sparse board/action features.
+The optional schema-2 trainer uses NumPy and a small policy/value MLP with
+color-normalized wall geometry. `teacher_data.py` samples legal archive positions
+and saves only completed search targets. `train_policy.py` and `train_nn.py` learn
+isolated candidates; `train_nn.py --feature-workers 8` parallelizes feature building.
 The value and policy guide MCTS root exploration; legality and tactical checks
 still control the final response.
 
@@ -190,12 +191,11 @@ target without duplicating positions. Resume a stopped run with
 `arena.py` plays a candidate against unguided MCTS and optional frozen models from
 the same held-out starts with colors exchanged. It records outcomes, illegal moves,
 latency, model/code hashes, a paired confidence bound, and the candidate's raw
-policy/value preference on 12 confirmed repair positions. `--promote` writes the
+policy/value preference on the held-out confirmed repair positions. `--promote` writes the
 live champion only with at least 100 pairs, a lower 95% score bound above 50%, zero
-illegal moves, p95 under five seconds, and an engine-acceptable choice in all 12
-repair positions. Each repair case stores every move within 30 heuristic points of
-its completed depth-two oracle result, so tied legal defenses do not become false
-failures. The repair
+illegal moves, p95 under five seconds, and an engine-acceptable choice in every
+held-out repair position. Each repair case stores the independently confirmed
+acceptable move set, so equivalent legal defenses do not become false failures. The repair
 positions live in `study/repair-gate-cases.json`; `train_policy.py` excludes their
 full histories from every input source, and the arena excludes them from its paired
 starts. A candidate that misses a repair is rejected before the expensive paired

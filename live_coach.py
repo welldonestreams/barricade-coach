@@ -101,6 +101,14 @@ def query(params, record_trace=True):
     seconds=float(params.get('seconds','4'))
     if not 0<seconds<=15:
         raise ValueError('Time budget must be greater than zero and at most 15 seconds')
+    seed=params.get('seed')
+    if seed not in (None,''):
+        try: seed=int(seed)
+        except (TypeError,ValueError): raise ValueError('Seed must be a 32-bit integer')
+        if not 0<=seed<=0xffffffff:
+            raise ValueError('Seed must be a 32-bit integer')
+    else:
+        seed=None
     # A short full-width search in the uncontested central opening, not a
     # hard-coded move. As soon as pawns approach or a wall appears, use full budget.
     engine=(params.get('engine','mcts') or 'mcts').lower()
@@ -110,8 +118,11 @@ def query(params, record_trace=True):
     # MCTS needs a little time to spin up its Node subprocess, so give the
     # uncontested opening a short but meaningful search rather than a lookup.
     early=not g.walls and all(p[0]==4 for p in g.pawns.values()) and abs(g.pawns[0][1]-g.pawns[1][1])>3
+    opening_seconds=float(params.get('opening_seconds','1.2'))
+    if not 0<opening_seconds<=15:
+        raise ValueError('Opening budget must be greater than zero and at most 15 seconds')
     if engine=='mcts':
-        budget=min(seconds, 1.2) if early else seconds
+        budget=min(seconds, opening_seconds) if early else seconds
     else:
         budget=min(seconds,.35) if early else seconds
     result=None
@@ -122,7 +133,7 @@ def query(params, record_trace=True):
         result=advice.advise(hist,g.to_move,depth=2 if early else 4,
                              seconds=max(.001,budget-(time.monotonic()-started)),
                              opp_name=params.get('opponent') or None,
-                             engine=engine)
+                             engine=engine,seed=seed)
     result['elapsed']=time.monotonic()-started
     legal=g.moves(g.to_move)
     if any(mv not in legal for _,mv in result['scored']):
@@ -130,9 +141,10 @@ def query(params, record_trace=True):
     payload=dict(position=actual, history=g.history, to_move=actual['side'],
                 legal=legal, top=result['scored'][:5], why=explain(g,result),
                 winner=g.winner, request_id=params.get('request_id'),
-                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies') if k in result},
+                search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies','simulations','workers','fallback') if k in result},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
-    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
+    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','crosscheck_root_candidates','crosscheck_initial_root_candidates','crosscheck_staged_root_narrowing','crosscheck_stopped_on_decisive_pawn','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
+    payload['search'].update(early=early,budget=budget,requested_seconds=seconds)
     if record_trace:
         trace(params,payload)
     return payload

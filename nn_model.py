@@ -91,9 +91,17 @@ def _wall_bits(walls, side):
     return bits
 
 
-def action_features(g, move, side=None):
+def action_context(g,side=None):
+    """Metrics shared by every candidate action at one root position."""
+    side=g.to_move if side is None else side
+    return dict(side=side,my_route=g.race_distance(side),
+                op_route=g.race_distance(1-side))
+
+
+def action_features(g, move, side=None, context=None):
     """Dense float list for a candidate move; length = dims['action']."""
     side = g.to_move if side is None else side
+    context=action_context(g,side) if context is None else context
     is_wall = len(move) == 3
     if is_wall:
         file_idx = c.FILES[move[1]]
@@ -110,8 +118,7 @@ def action_features(g, move, side=None):
         pos = [float(file_idx), float(adv)]
     child = g.copy()
     child._play(move)
-    before_me = g.race_distance(side)
-    before_op = g.race_distance(1 - side)
+    before_me=context['my_route'];before_op=context['op_route']
     after_me = child.race_distance(side)
     after_op = child.race_distance(1 - side)
     my_change = max(-4, min(4, after_me - before_me))
@@ -122,9 +129,15 @@ def action_features(g, move, side=None):
         before_res = c.path_resilience(frozenset(g.walls), g.pawns[1 - side], c.GOALS[1 - side])
         after_res = c.path_resilience(frozenset(child.walls), child.pawns[1 - side], c.GOALS[1 - side])
         res_drop = before_res - after_res
-        f += [float(max(-4, min(4, net))), float(max(-2, min(2, res_drop)))]
+        # Relative placement geometry generalizes a useful wall pattern to
+        # other ranks and to the opposite color after normalization.
+        opp_adv=_advance(g.pawns[1-side][1],side)
+        file_distance=abs((file_idx+.5)-g.pawns[1-side][0])
+        rank_distance=abs((rank-.5)-opp_adv)
+        f += [float(max(-4, min(4, net))), float(max(-2, min(2, res_drop))),
+              float(file_distance),float(rank_distance)]
     else:
-        f += [0.0, 0.0]
+        f += [0.0,0.0,0.0,0.0]
     f.append(1.0 if child.winner == side else 0.0)
     return f
 
@@ -165,7 +178,8 @@ def value(model, g, side=None):
 def policy_logits(model, g, legal=None):
     legal = g.moves(g.to_move) if legal is None else legal
     sv = state_features(g)
-    return {move: _logit(model, sv, action_features(g, move)) for move in legal}
+    context=action_context(g)
+    return {move:_logit(model,sv,action_features(g,move,context=context)) for move in legal}
 
 
 # ----------------------------------------------------------------------------
@@ -190,6 +204,9 @@ def validate(model):
     md = model.get('metadata', {})
     if md.get('kind') != 'mlp':
         raise ValueError('Neural model must be kind=mlp')
+    expected=dims();saved=md.get('dims',{})
+    if (saved.get('state'),saved.get('action'))!=(expected['state'],expected['action']):
+        raise ValueError('Neural model feature dimensions do not match this engine build')
     for name in ('policy', 'value'):
         layers = model.get(name)
         if not isinstance(layers, dict):
@@ -203,6 +220,14 @@ def validate(model):
                 raise ValueError(f'Invalid {name}.{k}')
             if any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in arr):
                 raise ValueError(f'Non-finite coefficient in {name}.{k}')
+        expected_in=expected['state']+(expected['action'] if name=='policy' else 0)
+        if (layers['in']!=expected_in or layers['out']!=1
+                or layers['hidden']!=saved.get('hidden')
+                or len(layers['W1'])!=layers['in']*layers['hidden']
+                or len(layers['b1'])!=layers['hidden']
+                or len(layers['W2'])!=layers['hidden']*layers['out']
+                or len(layers['b2'])!=layers['out']):
+            raise ValueError(f'Invalid {name} layer dimensions')
     return model
 
 
@@ -223,6 +248,7 @@ def new_model(seed=20260907, hidden=HIDDEN):
     np = _np()
     rng = np.random.default_rng(seed)
     d = dims()
+    d['hidden']=hidden
 
     def make(in_dim, out_dim):
         std = math.sqrt(2.0 / (in_dim + hidden))

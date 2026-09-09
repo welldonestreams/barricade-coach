@@ -386,5 +386,34 @@
     "acceptable": [
       "h3"
     ]
+  },
+  {
+    "code": "benchmark-blue-2673606728",
+    "ply": 20,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "e5",
+      "e4",
+      "e6",
+      "he6",
+      "d6",
+      "hc6",
+      "c6",
+      "ha6",
+      "d6",
+      "vf5",
+      "hf3",
+      "e3",
+      "d5"
+    ],
+    "best": "hg4",
+    "acceptable": [
+      "hg4"
+    ]
   }
 ]
