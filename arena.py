@@ -10,10 +10,10 @@ Two-part repair gate (2026-09-08):
    candidate -- so the screen measures model signal, not candidate admission.
 2. LIVE CHECK (production path): every repair position is run through the
    exact call the live coach makes -- ``advice.advise(engine='mcts', ...)``
-   with the candidate as ``policy_model``, the real 4s budget (MCTS budget
-   minus the tactical-cross-check reserve), and five fixed seeds. The final
-   recommendation must be acceptable on EVERY run with no timeout and no
-   illegal move. The same positions are run unguided (``policy_model=None``)
+   with the candidate as ``policy_model``, the production four-second MCTS
+   search followed by its bounded adaptive tactical check, and five fixed seeds. The final
+   recommendation must be acceptable on EVERY run with no decision failure and
+   no illegal move. The same positions are run unguided (``policy_model=False``)
    at the same budget: the candidate must not reduce repair reliability
    (guided acceptable runs >= unguided per case). Each run records the move,
    elapsed time, simulations, cross-check depth, and whether the tactical
@@ -243,8 +243,11 @@ def live_repair_check(model, paths, seconds=REPAIR_SECONDS, seeds=REPAIR_SEEDS,
         hist = game.history
         for seed in seeds:
             for guided in (True, False):
+                # False explicitly disables priors. None means "load the live
+                # champion" in advice.advise and would contaminate the frozen
+                # unguided baseline after the first successful promotion.
                 tasks.append((case, hist, game.to_move, legal, acceptable,
-                              seed, seconds, model if guided else None, guided))
+                              seed, seconds, model if guided else False, guided))
     records = {}
 
     def run(task):

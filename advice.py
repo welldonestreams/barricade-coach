@@ -58,18 +58,9 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         import policy_value
         model=policy_value.load_champion() if policy_model is None else policy_model
         priors=policy_value.search_priors(model,game) if model else None
-        # Wall-rich positions need enough deterministic time for the staged
-        # coverage search to finish depth 3. A 50/50 split left it a few
-        # milliseconds short on the measured blue tempo loss and returned a
-        # depth-2 tie. MCTS still receives tens of thousands of root-parallel rollouts
-        # at the normal four-second request. Short requests retain the prior
-        # 50/50 split; otherwise the tactical reserve starves broad MCTS.
-        if game.walls and any(game.remaining.values()):
-            reserve=(min(3.0,seconds*.75) if seconds>=3.8 else
-                     min(2.2,seconds*.5))
-        else:
-            reserve=0
-        budget=max(.001, deadline-time.monotonic()-reserve)
+        # Give broad MCTS the full nominal clock. The old 3s tactical reserve
+        # left it only ~1s and caused the measured 5r7nxm positional error.
+        budget=max(.001,seconds-.08)
         result=(mcts_coach.search(hist,side,budget,root_priors=priors)
                 if rollouts==60000 and seed is None else
                 mcts_coach.search(hist,side,budget,rollouts,seed,root_priors=priors))
@@ -83,7 +74,15 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     if (engine=='mcts' and game.walls and any(game.remaining.values())
             and result.get('scored') and not result.get('fallback')
             and not result.get('forced_loss') and result.get('tactical')!='immediate win'):
-        result=_tactical_crosscheck(hist, side, result, deadline-time.monotonic())
+        # Pawn recommendations in wall positions are where rollout search has
+        # repeatedly missed a precise defensive wall, so retain the full 3s
+        # deterministic guard there. A wall recommendation gets a bounded 2s
+        # check, enough to catch the measured wasted-wall/pawn-tempo case.
+        top_move=result['scored'][0][1]
+        tactical_budget=3.0 if len(top_move)==2 else 2.0
+        result=_tactical_crosscheck(hist,side,result,tactical_budget)
+        result['mcts_budget']=budget
+        result['tactical_budget']=tactical_budget
     tactical=list(result.get('scored') or [])
     result.update(tactical=tactical,blend=[],learning_policy='validated exact ties only')
     if not tactical or result.get('fallback') or (engine=='python' and result.get('depth',0)<2):
@@ -133,9 +132,12 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         return mcts_result
     mcts_moves=[move for _,move in mcts_result.get('scored',[])[:8]]
     game=c.Game(hist)
-    if sum(game.remaining.values())<=6:
-        # With few walls left, full-width depth two is small enough to finish
-        # and preserves exact coverage of the known defensive-wall cases.
+    if game.remaining[side]==0 and sum(game.remaining.values())<=3:
+        # With no walls of our own, look through the opponent's last placements
+        # before recommending a backwards-looking pawn move.
+        mm=c.candidate_search(hist,side,depth=5,time_limit=seconds,
+                              beam=16,root_moves=mcts_moves,wide_root=True)
+    elif sum(game.remaining.values())<=6:
         mm=c.search(hist,side,depth=2,time_limit=seconds)
         mm['selective']=False
     else:

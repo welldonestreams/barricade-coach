@@ -248,8 +248,10 @@ class PolicyValueTests(unittest.TestCase):
         # unguided baseline that misses one; parity + records are checked.
         legal = [m for m in c.Game(['e2']).moves(c.BLUE)]
         acc = ['e8']
+        seen=[]
         def fake_advise(hist, side, seconds, seed, policy_model, **kw):
-            ok = policy_model is not None or seed != arena.REPAIR_SEEDS[-1]
+            seen.append(policy_model)
+            ok = policy_model is not False or seed != arena.REPAIR_SEEDS[-1]
             return dict(scored=[(-10, 'e8' if ok else legal[0])], simulations=500,
                         elapsed=0.01, fallback=False, timed_out=True,
                         policy_model_id='m1' if policy_model else None)
@@ -266,6 +268,8 @@ class PolicyValueTests(unittest.TestCase):
         self.assertEqual(rows[0]['guided_ok'], 5)
         self.assertEqual(rows[0]['unguided_ok'], 4)
         self.assertTrue(rows[0]['parity_ok'])
+        self.assertIn(False,seen)
+        self.assertNotIn(None,seen)
         run = rows[0]['runs'][0]
         self.assertEqual(run['guided']['move'], 'e8')
         self.assertIn('simulations', run['guided'])
@@ -319,9 +323,11 @@ class PolicyValueTests(unittest.TestCase):
             self.assertTrue(set(row['must_consider']).issubset(wide))
 
     def test_wide_root_narrows_only_after_complete_coverage_pass(self):
-        case=json.loads((Path(__file__).with_name('study')/
-                         'repair-gate-cases.json').read_text())[-1]
-        result=c.candidate_search(case['history'],c.BLUE,depth=3,
+        case=next(row for row in json.loads((Path(__file__).with_name('study')/
+                         'repair-gate-cases.json').read_text())
+                  if row['code']=='benchmark-blue-2673606728')
+        game=c.Game(case['history'])
+        result=c.candidate_search(case['history'],game.to_move,depth=3,
                                   time_limit=8,beam=8,
                                   root_moves=['e2','hg4'],wide_root=True)
         self.assertGreaterEqual(result['depth'],2)

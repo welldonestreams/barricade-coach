@@ -258,5 +258,8 @@ class MctsTests(unittest.TestCase):
         with patch.object(shutil,'which',return_value=None), self.assertRaises(ValueError): mcts_coach.search([])
         with self.assertRaises(ValueError): mcts_coach.search([],rollouts=0)
         with self.assertRaises(ValueError): mcts_coach.search([],time_limit=float('nan'))
+        for value in (0.019,3.01,float('nan'),'0.2'):
+            with self.subTest(uct_const=value),self.assertRaises(ValueError):
+                mcts_coach.search([],uct_const=value)
 
 if __name__=='__main__': unittest.main()

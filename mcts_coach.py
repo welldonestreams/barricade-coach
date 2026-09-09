@@ -38,11 +38,13 @@ def tempered_root_priors(priors, legal, temperature=ROOT_PRIOR_TEMPERATURE,
     return {move:guided*shaped[move]/total+floor for move in legal}
 
 def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=None,
-           root_priors=None):
+           root_priors=None, uct_const=0.2):
     if not isinstance(time_limit, (int,float)) or not math.isfinite(time_limit) or not 0 < time_limit <= 60:
         raise ValueError('MCTS seconds must be greater than 0 and at most 60')
     if not isinstance(rollouts, int) or not 2 <= rollouts <= 200000:
         raise ValueError('Rollouts must be an integer from 2 to 200000')
+    if not isinstance(uct_const,(int,float)) or not math.isfinite(uct_const) or not .02<=uct_const<=3:
+        raise ValueError('UCT constant must be from 0.02 to 3')
     started = time.monotonic()
     deadline = started + time_limit
     g = c.Game(history)
@@ -110,7 +112,8 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return dict(candidates=[], simulations=0, timed_out=True)
-        payload = dict(history=g.history, rollouts=rollouts, seconds=max(.001, remaining-.08), seed=seed_w)
+        payload = dict(history=g.history, rollouts=rollouts, seconds=max(.001, remaining-.08),
+                       seed=seed_w,uct_const=uct_const)
         if root_priors:
             payload.update(root_priors=root_priors,cpuct=1.25)
         interrupted = False

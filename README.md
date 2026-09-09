@@ -140,10 +140,12 @@ configured aliases are recognized. Green marks the recommended square or wall;
 it moves with scrolling/rotation and clears on a changed or uncertain position.
 Replay scrubbing with a full future move list fails closed rather than guessing.
 
-Live searches normally use parallel MCTS with 4 seconds; uncontested central
-openings get 1.2 seconds (Python opening mode uses 0.35 seconds).
-All MCTS workers share that single deadline. The bridge stops waiting after 18 seconds and discards stale responses. This is a
-response deadline, not a promise that every overloaded machine finds strong advice.
+Live searches normally give parallel MCTS a full 4 seconds; uncontested central
+openings get 1.2 seconds (Python opening mode uses 0.35 seconds). In positions
+with walls, a bounded deterministic check then gets up to 3 seconds to catch
+the precise defensive walls that rollout search can miss. The normal complex
+query therefore takes about 4-7 seconds and remains below the overlay's
+18-second response deadline. All MCTS workers share one MCTS deadline.
 `/api/live` checks the board/history match and legality again before responding.
 Route changes and a searched reply explain the recommendation; short searches are
 not proof of optimal play. Opponent data breaks exact tactical ties only, from

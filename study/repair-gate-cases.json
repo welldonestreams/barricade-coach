@@ -66,8 +66,10 @@
     ],
     "best": "vd5",
     "acceptable": [
-      "vd5"
-    ]
+      "vd5",
+      "hb5"
+    ],
+    "evidence": "completed selective depth-3 scores vd5 and hb5 equally; depth-2 prefers vd5"
   },
   {
     "code": "81s8yr",
@@ -415,5 +417,62 @@
     "acceptable": [
       "hg4"
     ]
+  },
+  {
+    "code": "5r7nxm",
+    "ply": 14,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "e5",
+      "e4",
+      "he3",
+      "he5",
+      "hb5",
+      "vd5",
+      "vc6"
+    ],
+    "best": "hg5",
+    "acceptable": [
+      "hg5",
+      "vf5"
+    ],
+    "evidence": "five 240k-simulation MCTS runs rejected played d4"
+  },
+  {
+    "code": "0m73sm",
+    "ply": 21,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "hg3",
+      "e5",
+      "he6",
+      "d6",
+      "hc6",
+      "he5",
+      "ve4",
+      "hb3",
+      "ha6",
+      "c6",
+      "vf5",
+      "vc5",
+      "va2"
+    ],
+    "best": "vb4",
+    "acceptable": [
+      "vb4",
+      "va4"
+    ],
+    "evidence": "three independent long MCTS runs plus selective depth-3 rejected played hc4"
   }
 ]

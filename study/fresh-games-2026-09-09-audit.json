@@ -1,0 +1,81 @@
+{
+  "created": "2026-09-09",
+  "coach_build_reviewed": "cd0d1921838b",
+  "games": [
+    {
+      "code": "qv58ab",
+      "result": "win",
+      "user_color": "blue",
+      "opponent": "Agc",
+      "trace": "10/10 user turns advised and followed",
+      "finding": "complete coach-guided win; no loss regression"
+    },
+    {
+      "code": "zq0s1h",
+      "result": "win",
+      "user_color": "blue",
+      "opponent": "Frostwolfrolf",
+      "trace": "16/32 user turns advised; all 16 followed",
+      "finding": "partial coach-guided win; no confirmed regression"
+    },
+    {
+      "code": "0m73sm",
+      "result": "loss",
+      "user_color": "red",
+      "opponent": "Agc",
+      "trace": "14/22 user turns advised; all 14 followed",
+      "findings": [
+        {
+          "ply": 19,
+          "played": "vc5",
+          "long_mcts": "ha1/ha2",
+          "selective_minimax": "vc5",
+          "status": "inconclusive; excluded from strict repair gate"
+        },
+        {
+          "ply": 21,
+          "played": "hc4",
+          "replacement": [
+            "vb4",
+            "va4"
+          ],
+          "evidence": "three long MCTS runs and selective depth-3 agree",
+          "status": "confirmed and added to strict repair gate"
+        }
+      ]
+    },
+    {
+      "code": "5r7nxm",
+      "result": "loss",
+      "user_color": "blue",
+      "opponent": "Agc",
+      "trace": "15/22 user turns advised; all 15 followed",
+      "findings": [
+        {
+          "ply": 14,
+          "played": "d4",
+          "replacement": [
+            "hg5",
+            "vf5"
+          ],
+          "evidence": "five independent 240k-simulation MCTS runs; selective search also prefers the wall family",
+          "root_cause": "three-second tactical reserve left broad MCTS about one second",
+          "status": "confirmed and added to strict repair gate"
+        },
+        {
+          "ply": 46,
+          "shown_move": "g7",
+          "status": "already losing; selective depth-5 also prefers g7 as longest resistance",
+          "note": "late display was not the original throw"
+        }
+      ]
+    }
+  ],
+  "change": "full four-second MCTS first, followed by an adaptive two-to-three-second tactical check",
+  "targeted_repeatability": {
+    "5r7nxm_ply14": "5/5 chose hg5 or vf5",
+    "0m73sm_ply19": "5/5 chose ha2; tracked as diagnostic because minimax disagrees",
+    "0m73sm_ply21": "5/5 chose vb4",
+    "52s6kd_ply16": "5/5 chose e5"
+  }
+}

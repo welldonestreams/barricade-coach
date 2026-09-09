@@ -56,7 +56,8 @@ function run(input, emit) {
     Math.random = () => { seed = (Math.imul(1664525,seed)+1013904223) >>> 0; return seed/4294967296; };
   }
   console.log = () => {}; // Upstream diagnostics must not corrupt JSON output.
-  const tree = new MonteCarloTreeSearch(game, 0.2);
+  const uctConst = Number.isFinite(input.uct_const) ? Math.max(0.02, Math.min(3, input.uct_const)) : 0.2;
+  const tree = new MonteCarloTreeSearch(game, uctConst);
   const started = Date.now();
   // A promoted policy may guide root exploration. It never masks legal moves
   // and never supplies outcome counts. Deeper nodes retain upstream UCT.

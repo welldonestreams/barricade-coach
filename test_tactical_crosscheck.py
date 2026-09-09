@@ -51,27 +51,32 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertEqual(result['scored'][0][1], 'hh6')
         self.assertNotIn('tactical_override', result)
 
-    def test_crosscheck_uses_only_remaining_total_budget(self):
-        clock=[0.0]; budgets=[]
+    def test_mcts_gets_full_budget_before_bounded_tactical_check(self):
+        budgets=[]
         def sample(*args,**kwargs):
-            budgets.append(args[2]); clock[0]+=args[2]
+            budgets.append(args[2])
             return mcts(CASES[0]['mcts_move'])
         def tactical(*args, **kwargs):
-            budgets.append(kwargs['time_limit']); clock[0]+=kwargs['time_limit']
+            budgets.append(kwargs['time_limit'])
             return dict(scored=[(0, 'hh5')], depth=1)
-        with patch.object(advice.time, 'monotonic', side_effect=lambda:clock[0]), \
-             patch.object(mcts_coach, 'search', side_effect=sample), \
+        with patch.object(mcts_coach, 'search', side_effect=sample), \
+             patch.object(c, 'candidate_search', side_effect=tactical), \
              patch.object(c, 'search', side_effect=tactical):
             result=advice.advise(CASES[0]['history'], engine='mcts', seconds=4)
-        self.assertAlmostEqual(sum(budgets), 4)
-        self.assertLessEqual(result['elapsed'], 4)
+        self.assertEqual(len(budgets),2)
+        self.assertTrue(3.8 <= budgets[0] < 4)
+        self.assertEqual(budgets[1],3)
+        self.assertLessEqual(result['elapsed'], 7.1)
         self.assertNotIn('tactical_override', result)
 
-    def test_proven_result_does_not_run_crosscheck(self):
+    def test_proven_result_is_not_overridden(self):
         for extra in (dict(forced_loss=True), dict(tactical='immediate win')):
             with patch.object(mcts_coach, 'search', return_value=mcts('hh5', **extra)), \
-                 patch.object(c, 'candidate_search', side_effect=AssertionError('already proven')):
-                advice.advise(CASES[0]['history'], engine='mcts', seconds=4)
+                 patch.object(c, 'candidate_search', return_value=dict(
+                     scored=[(0,'d3'),(200,'hh5')],depth=2,principal_variation=['d3'])):
+                result=advice.advise(CASES[0]['history'], engine='mcts', seconds=4)
+            self.assertEqual(result['scored'][0][1],'hh5')
+            self.assertNotIn('tactical_override',result)
 
     def test_expired_budget_and_exact_threshold_do_not_override(self):
         result=mcts('d3')
