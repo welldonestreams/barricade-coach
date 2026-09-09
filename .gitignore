@@ -9,6 +9,9 @@ study/archive/
 memory/
 *.log
 study/collection-summary.json
+study/real-game-measurement.json
+study/regression-queue.json
+study/regressions/verified-*.json
 
 *.bundle
 *.log.err

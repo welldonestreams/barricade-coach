@@ -30,7 +30,7 @@ def get(path):
             print(f'Public API rate limit; pausing {delay}s before retry', flush=True)
             time.sleep(delay)
 
-def collect(usernames):
+def collect(usernames, refresh_profiles=False):
     archive = ROOT / 'archive'
     profiles = ROOT / 'profiles'
     archive.mkdir(parents=True, exist_ok=True)
@@ -40,7 +40,7 @@ def collect(usernames):
         if not name or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in name):
             raise ValueError('Use a plain profile username')
         cached = profiles / f'{name}.json'
-        if cached.exists():
+        if cached.exists() and not refresh_profiles:
             games = json.loads(cached.read_text(encoding='utf-8'))
             all_codes.update(g['shareCode'] for g in games)
             summary[name] = dict(games=len(games), cached=True, wins=sum(g['result']=='win' for g in games))
@@ -112,6 +112,9 @@ def collect(usernames):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('usernames', nargs='+')
-    collect(parser.parse_args().usernames)
+    parser.add_argument('--refresh-profiles', action='store_true',
+                        help='refresh profile indexes while reusing downloaded game files')
+    args = parser.parse_args()
+    collect(args.usernames, refresh_profiles=args.refresh_profiles)
     from build_book import build
     build()

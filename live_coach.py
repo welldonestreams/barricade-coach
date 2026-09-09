@@ -18,6 +18,7 @@ def trace(params, payload):
             path.replace(folder/"live-advice.previous.jsonl")
         row=dict(utc=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),build=BUILD,
                  game=params.get("game_id", "")[:240],history=payload["history"],
+                 side=payload["position"]["side"],
                  position=payload["position"],top=payload["top"],search=payload["search"])
         with path.open("a",encoding="utf-8") as f:f.write(json.dumps(row)+"\n")
     except OSError:

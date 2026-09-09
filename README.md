@@ -237,7 +237,22 @@ Downloads. Firefox installation still requires replacing the existing Tampermonk
 script and reloading the page; do not enable two versions together.
 
 Advice traces are kept locally in logs/live-advice.jsonl (5 MB rotation plus one
-backup), including board history and build fingerprint. Post-game review checks
+backup), including board history, side to move, and build fingerprint. Post-game review checks
 history/board agreement, caps the whole review at 12 seconds, and labels partial
 results. See study/additional/1ttbdt-review.md for the latest reported loss and
 what the evidence does and does not establish.
+
+To refresh the selected player's public games and close the real-result feedback
+loop, run:
+
+```powershell
+python update_real_games.py --accounts steak2222 --prefix steak
+```
+
+The report counts a game toward coach win rate only when the trace covers every
+turn for that account, every played move matches the logged top recommendation,
+and every recommendation came from one engine build. Missing, mixed-build, and
+diverged games remain visible but are excluded. Fully verified losses receive an
+independent offline regression review under `study/regressions/verified-*.json`.
+Those candidates are deliberately excluded from training and the held-out repair
+gate until reviewed, preventing a position from becoming both lesson and exam.
