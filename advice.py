@@ -69,7 +69,8 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
                               sum(game.remaining.values())<=3)
         budget=max(.001,15.0 if long_no_wall_endgame else seconds-.08)
         search_rollouts=max(rollouts,200000) if long_no_wall_endgame else rollouts
-        result=(mcts_coach.search(hist,side,budget,workers=8,root_priors=priors)
+        result=(mcts_coach.search(hist,side,budget,search_rollouts,
+                                  workers=8,root_priors=priors)
                 if long_no_wall_endgame and rollouts==60000 and seed is None else
                 mcts_coach.search(hist,side,budget,search_rollouts,seed,
                                   workers=8,root_priors=priors)

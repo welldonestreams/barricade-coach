@@ -143,7 +143,7 @@ class TacticalCrosscheckTests(unittest.TestCase):
             seen.append((args[2],args[3],kwargs.get('workers')))
             return mcts('g6')
         with patch.object(mcts_coach,'search',side_effect=sample):
-            result=advice.advise(hist,engine='mcts',seconds=4,seed=7)
+            result=advice.advise(hist,engine='mcts',seconds=4)
         self.assertEqual(seen,[(15.0,200000,8)])
         self.assertTrue(result['extended_endgame_search'])
         self.assertEqual(result['mcts_budget'],15.0)
