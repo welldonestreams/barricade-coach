@@ -474,5 +474,44 @@
       "va4"
     ],
     "evidence": "three independent long MCTS runs plus selective depth-3 rejected played hc4"
+  },
+  {
+    "code": "4wpcv0",
+    "ply": 26,
+    "history": [
+      "he8",
+      "d9",
+      "hc8",
+      "he1",
+      "f1",
+      "hg1",
+      "g1",
+      "vh1",
+      "f1",
+      "vf8",
+      "e1",
+      "c9",
+      "d1",
+      "b9",
+      "d2",
+      "b8",
+      "va6",
+      "ha8",
+      "d3",
+      "hg7",
+      "e3",
+      "hh8",
+      "f3",
+      "b7",
+      "g3"
+    ],
+    "best": "hf3",
+    "acceptable": [
+      "hf3",
+      "hf4",
+      "hf5",
+      "hf6"
+    ],
+    "evidence": "completed wider depth-3 check found a delayed defensive wall after depth 2 stopped on c7"
   }
 ]

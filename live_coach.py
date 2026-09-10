@@ -147,7 +147,7 @@ def query(params, record_trace=True):
                 winner=g.winner, request_id=params.get('request_id'),
                 search={k:result[k] for k in ('engine','depth','elapsed','timed_out','principal_variation','forced_loss','exact','outcome','goal_plies','simulations','workers','fallback','position_warning','position_warning_depth') if k in result},
                 opponent_evidence=[r for r in result.get('blend',[]) if r.get('evidence')][:4],build=BUILD)
-    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','crosscheck_root_candidates','crosscheck_initial_root_candidates','crosscheck_staged_root_narrowing','crosscheck_stopped_on_decisive_pawn','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
+    payload['search'].update({k:result[k] for k in ('tactical_override','crosscheck_depth','crosscheck_root_candidates','crosscheck_initial_root_candidates','crosscheck_staged_root_narrowing','crosscheck_stopped_on_decisive_pawn','crosscheck_expanded','score_units','policy_guided','policy_value_guided','policy_model','policy_model_id') if k in result})
     payload['search'].update(early=early,budget=budget,requested_seconds=seconds)
     if record_trace:
         trace(params,payload)

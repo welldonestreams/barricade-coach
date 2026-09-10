@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const {parseRows,positionKey,rectForMove,responseMatches}=require('./barricade-live-coach.user.js');
+const {parseRows,positionKey,rectForMove,responseMatches,shareCode}=require('./barricade-live-coach.user.js');
 assert.deepEqual(parseRows('1. e2 e8 2. e3 e7 3. e4 e6 4. e5'),['e2','e8','e3','e7','e4','e6','e5']);
 assert.deepEqual(parseRows('1.e2e82.e3e7'),['e2','e8','e3','e7']);
 for(const s of ['chat: 1.e2','2.e3e7','1.e22.e3e7','1.he9','1.e2 3.e4'])assert.equal(parseRows(s),null);
@@ -20,4 +20,7 @@ assert(!responseMatches({...d,top:[[0,'d2']]},p,'1'));
 assert(!responseMatches(d,{...p,blue:'e4'},'1'));
 assert.notEqual(positionKey(p),positionKey({...p,blue_left:0}));
 assert.notEqual(positionKey(p),positionKey({...p,h:p.h+',e4'}));
+assert.equal(shareCode('/game/4wpcv0'),'4wpcv0');
+assert.equal(shareCode('/analysis?game=4wpcv0&ref=web_share_end'),'4wpcv0');
+assert.equal(shareCode('/analysis?ref=x'),'');
 console.log('Overlay history, rotation, reserves, and stale-response regressions passed');

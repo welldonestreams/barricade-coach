@@ -60,12 +60,26 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         priors=policy_value.search_priors(model,game) if model else None
         # Give broad MCTS the full nominal clock. The old 3s tactical reserve
         # left it only ~1s and caused the measured 5r7nxm positional error.
-        budget=max(.001,seconds-.08)
-        result=(mcts_coach.search(hist,side,budget,root_priors=priors)
-                if rollouts==60000 and seed is None else
-                mcts_coach.search(hist,side,budget,rollouts,seed,root_priors=priors))
+        # A player with no walls facing the opponent's last few walls is a rare
+        # high-variance endgame: at 0fsy74, four and eight second searches could
+        # still recommend the backwards h5 shuffle. Spend a longer budget and
+        # eight independent roots only there; it remains below the overlay's
+        # hard response deadline.
+        long_no_wall_endgame=(game.remaining[side]==0 and
+                              sum(game.remaining.values())<=3)
+        budget=max(.001,15.0 if long_no_wall_endgame else seconds-.08)
+        search_rollouts=max(rollouts,200000) if long_no_wall_endgame else rollouts
+        result=(mcts_coach.search(hist,side,budget,workers=8,root_priors=priors)
+                if long_no_wall_endgame and rollouts==60000 and seed is None else
+                mcts_coach.search(hist,side,budget,search_rollouts,seed,
+                                  workers=8,root_priors=priors)
+                if long_no_wall_endgame else
+                mcts_coach.search(hist,side,budget,root_priors=priors)
+                if search_rollouts==60000 and seed is None else
+                mcts_coach.search(hist,side,budget,search_rollouts,seed,root_priors=priors))
         result['policy_model']=bool(model)
         result['policy_model_id']=policy_value.model_id(model) if model else None
+        result['extended_endgame_search']=long_no_wall_endgame
     elif engine=='python':
         result=c.search(hist,side,depth,max(.001,seconds-.1))
     else:
@@ -131,6 +145,7 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
     if seconds <= .01:
         return mcts_result
     mcts_moves=[move for _,move in mcts_result.get('scored',[])[:8]]
+    mcts_top=mcts_moves[0]
     game=c.Game(hist)
     if game.remaining[side]==0 and sum(game.remaining.values())<=3:
         # With no walls of our own, look through the opponent's last placements
@@ -144,6 +159,25 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         mm = c.candidate_search(hist, side, depth=3, time_limit=seconds,
                                 beam=8,root_moves=mcts_moves,
                                 preserve_depth2_pawn_margin=TACTICAL_GAP_CP)
+        # A complete depth-2 pass can say "advance the pawn" while disagreeing
+        # with MCTS about which pawn move, then stop before seeing a delayed
+        # defensive wall. That exact pattern lost coverage at 4wpcv0 ply 26.
+        # Escalate only this ambiguous case; routine positions keep the normal
+        # 2-3 second check. The expanded pass still completes below the
+        # overlay's 18-second response deadline after the four-second MCTS run.
+        shallow={move:score for score,move in mm.get('scored',[])}
+        shallow_best=mm.get('scored',[()])[0] if mm.get('scored') else ()
+        if (mm.get('stopped_on_decisive_pawn') and len(mcts_top)==2
+                and shallow_best and len(shallow_best[1])==2
+                and mcts_top in shallow and
+                0 < shallow[mcts_top]-shallow_best[0] <= TACTICAL_GAP_CP):
+            expanded=c.candidate_search(hist,side,depth=3,time_limit=8.0,
+                                        beam=20,root_moves=[mcts_top],
+                                        wide_root=True,
+                                        preserve_depth2_pawn_margin=None)
+            if expanded.get('depth',0)>=3:
+                mm=expanded
+                mcts_result['crosscheck_expanded']=True
     mcts_result['crosscheck_depth'] = mm.get('depth', 0)
     mcts_result['crosscheck_root_candidates'] = mm.get('root_candidates', 0)
     mcts_result['crosscheck_initial_root_candidates'] = mm.get('initial_root_candidates',0)
@@ -159,9 +193,22 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
             f"Position looks badly losing; no saving line was found through "
             f"the completed depth-{mm['depth']} check. The move shown is the best resistance found.")
         mcts_result['position_warning_depth']=mm['depth']
-    mcts_top = mcts_result['scored'][0][1]
     mm_scores = {m: s for s, m in mm['scored']}
     if mcts_top not in mm_scores or mm_best[1] == mcts_top:
+        return mcts_result
+    # With no walls of our own, every legal choice is a pawn move and the
+    # selective route heuristic is vulnerable to horizon shuffles. At 0fsy74
+    # it changed g6 to the backwards h5 even though three 15-second MCTS runs
+    # strongly retained g6. Keep the deeper check for warnings/explanation,
+    # but do not let it overrule the rollout search between pawn moves.
+    if game.remaining[side]==0 and len(mcts_top)==2:
+        return mcts_result
+    # The selective checker exists to recover wall defenses that rollout
+    # search omitted. It must not replace a wall that MCTS already explored
+    # deeply with a different selective guess. This exact failure changed the
+    # correct vb4 defense back to hc4 at 0m73sm ply 21. Full-width low-wall
+    # checks remain allowed to replace a wall (including the e5 tempo repair).
+    if mm.get('selective') and len(mcts_top)==3 and len(mm_best[1])==3:
         return mcts_result
     gap = mm_scores[mcts_top] - mm_best[0]
     if gap <= TACTICAL_GAP_CP:

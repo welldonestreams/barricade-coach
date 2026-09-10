@@ -100,7 +100,9 @@ def search(history, side=None, time_limit=5, rollouts=60000, seed=None, workers=
         except Exception:
             ncpu = 2
         workers = max(1, min(4, ncpu - 2))
-    workers = max(1, min(4, int(workers)))
+    # Normal calls still auto-cap at four. A caller may explicitly request up
+    # to eight independent roots for a rare late-game stability check.
+    workers = max(1, min(8, int(workers)))
     seconds = max(0.001, time_limit - (time.monotonic() - started))
     flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
     adapter = str(Path(__file__).with_name('mcts_adapter.cjs'))

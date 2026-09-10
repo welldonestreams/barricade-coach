@@ -226,6 +226,40 @@ class ApiTests(unittest.TestCase):
             other=server.LocalServer(self.httpd.server_address,server.Handler)
             other.server_close()
 
+    def test_completed_overlay_game_is_archived_without_waiting_for_review(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(server,'ROOT',tmp):
+            path=server.archive_finished_game('abc123','e2,e8,e3','red',
+                                              'Steak','Friend',refresh=False)
+            data=json.loads(Path(path).read_text(encoding='utf-8'))
+            self.assertEqual(data['shareCode'],'abc123')
+            self.assertEqual(data['historyCsv'],'e2,e8,e3')
+            self.assertEqual(data['winner'],'1')
+            self.assertEqual((data['player1Username'],data['player2Username']),
+                             ('Steak','Friend'))
+            data.pop('source');data['id']='authoritative'
+            Path(path).write_text(json.dumps(data),encoding='utf-8')
+            server.archive_finished_game('abc123','e2,e8,e3','red',
+                                         'Steak','Friend',refresh=False)
+            self.assertEqual(json.loads(Path(path).read_text())['id'],'authoritative')
+            with self.assertRaises(ValueError):
+                server.archive_finished_game('../bad','e2','red','a','b',refresh=False)
+
+    def test_public_game_sync_covers_resignations_and_paths(self):
+        self.assertEqual(server.game_share_code('/game/4wpcv0'),'4wpcv0')
+        self.assertEqual(server.game_share_code('/analysis?game=4wpcv0&ref=x'),'4wpcv0')
+        self.assertEqual(server.game_share_code('/game/../bad'),'')
+        finished=dict(shareCode='4wpcv0',historyCsv='e2,e8,e3',winner='1',
+                      finishedAt='now',finishedReason='resign',
+                      player1Username='Friend',player2Username='Steak')
+        with tempfile.TemporaryDirectory() as tmp,patch.object(server,'ROOT',tmp), \
+             patch('collect_games.get',return_value=finished), \
+             patch.object(server.learning,'record_game') as record:
+            self.assertTrue(server.sync_finished_game('4wpcv0'))
+            saved=json.loads((Path(tmp)/'study/archive/4wpcv0.json').read_text())
+        self.assertEqual(saved['finishedReason'],'resign')
+        record.assert_called_once_with('e2,e8,e3','red',red_name='Friend',
+                                       blue_name='Steak',sharecode='4wpcv0')
+
 @unittest.skipUnless(shutil.which('node'),'Node.js optional MCTS dependency')
 class MctsTests(unittest.TestCase):
     def test_independent_rules_agree_all_shared_positions(self):

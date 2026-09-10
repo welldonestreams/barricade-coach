@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barricade Live Coach
 // @namespace    welldonestreams
-// @version      1.5.0
+// @version      1.6.0
 // @description  Verified board advice, visible highlights and factual explanations
 // @match        https://barricade.gg/*
 // @grant        GM_getValue
@@ -48,8 +48,15 @@
       JSON.stringify(data.position.walls)===JSON.stringify(snapshot.walls) &&
       data.top.every(t=>data.legal.includes(t[1]));
   }
+  function shareCode(value) {
+    const text=String(value||'');
+    const game=text.match(/\/game\/([A-Za-z0-9_-]{3,32})(?:[?#]|$)/);
+    if(game)return game[1];
+    const analysis=text.match(/[?&]game=([A-Za-z0-9_-]{3,32})(?:[&#]|$)/);
+    return analysis?analysis[1]:'';
+  }
   if (typeof module!=='undefined' && module.exports) {
-    module.exports={parseRows,positionKey,rectForMove,responseMatches}; return;
+    module.exports={parseRows,positionKey,rectForMove,responseMatches,shareCode}; return;
   }
   let COACH=null;
   const mine=n=>/^steak/i.test(n)||[GM_getValue('bc_me','steak2222'),...GM_getValue('bc_alts','').split(',')].some(m=>m.toLowerCase()===n.toLowerCase());
@@ -61,7 +68,7 @@
   const cache=new Map();
   const panel=document.createElement('div'); panel.id='bc-coach';
   panel.style.cssText='position:fixed;right:16px;top:16px;z-index:2147483000;background:#111827f5;color:#f9fafb;border:1px solid #64748b;border-radius:12px;padding:12px;max-width:350px;font:14px system-ui;box-shadow:0 4px 20px #0008';
-  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.5</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
+  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.6</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
   document.body.appendChild(panel);
   const el=id=>panel.querySelector('#bc-'+id);
   function clear() { highlights.forEach(e=>e.remove()); highlights=[]; }
@@ -172,7 +179,8 @@
     const winnerName = data.winner === 0 ? 'red' : 'blue';
     const red = snapshot.red_name || (myColor === 'red' ? me : oppName);
     const blue = snapshot.blue_name || (myColor === 'blue' ? me : oppName);
-    const p = new URLSearchParams({h: snapshot.h, winner: winnerName, red, blue});
+    const p = new URLSearchParams({h: snapshot.h, winner: winnerName, red, blue,
+      share:shareCode(gameId)});
     GM_xmlhttpRequest({method:'GET', url: COACH + '/api/record?' + p, timeout: 4000,
       onload(){}, onerror(){}, ontimeout(){}});
   }
@@ -190,6 +198,9 @@
     el('move').textContent = winnerName === myColor ? 'You won' : 'You lost';
     el('status').textContent = 'Analyzing this game…';
     el('why').textContent = '';
+    // Save the completed game even if the optional post-game analysis is busy
+    // or times out. The server stores a local snapshot immediately.
+    recordGame(data,snapshot);
     const p = new URLSearchParams({h:snapshot.h, side:myColor, red:snapshot.red, blue:snapshot.blue,
       walls:snapshot.walls.join(','), red_left:snapshot.red_left, blue_left:snapshot.blue_left, depth:'2',seconds:'0.6'});
     const attempt = (tries) => {
@@ -205,7 +216,6 @@
             }
             if (res.status !== 200 || d.error) throw Error(d.error || 'analysis failed');
             if (d.winner !== data.winner) throw Error('Game result and history disagree');
-            recordGame(data,snapshot);
             if (!d.blunders || !d.blunders.length) {
               el('status').textContent = (d.complete?'Review complete':'Partial review')+' — no errors established at depth 2 in the reviewed moves.';
               return;
@@ -251,7 +261,7 @@
     const id=String(++generation);
     const params=new URLSearchParams({...snapshot,grid:'',root:'',opponent,game_id:gameId,seconds:'4',request_id:id,walls:snapshot.walls.join(',')});
     el('status').textContent='Thinking…';
-    request=GM_xmlhttpRequest({method:'GET',url:COACH+'/api/live?'+params,timeout:18000,
+    request=GM_xmlhttpRequest({method:'GET',url:COACH+'/api/live?'+params,timeout:20000,
       onload(res) {
         if(String(generation)!==id)return;request=null;
         try {
@@ -265,7 +275,7 @@
         } catch(e) {invalidate(e.message);retryAt=Date.now()+1200;}
       },
       onerror(){if(String(generation)===id){request=null;invalidate('Start the updated coach server');retryAt=Date.now()+3000;}},
-      ontimeout(){if(String(generation)===id){request=null;invalidate('18-second limit reached; no stale advice shown');retryAt=Date.now()+1000;}}
+      ontimeout(){if(String(generation)===id){request=null;invalidate('20-second limit reached; no stale advice shown');retryAt=Date.now()+1000;}}
     });
   }
   function tick() {

@@ -26,6 +26,8 @@ UI = os.path.join(ROOT, 'ui', 'index.html')
 SEARCH_LOCK = threading.BoundedSemaphore(1)
 OPPONENT_JOBS = set()
 OPPONENT_LOCK = threading.Lock()
+GAME_SYNC_JOBS = set()
+GAME_SYNC_LOCK = threading.Lock()
 
 class LocalServer(ThreadingHTTPServer):
     # Windows SO_REUSEADDR can let two processes serve the same loopback port.
@@ -58,6 +60,114 @@ def json_or(text):
         return json.loads(text)
     except ValueError:
         return None
+
+
+def archive_finished_game(sharecode, history_csv, winner, red, blue,
+                          refresh=True):
+    """Persist a completed overlay game, then refresh it from the public API.
+
+    The immediate local snapshot closes the gap between live advice logging and
+    periodic profile harvesting. The background refresh replaces that minimal
+    snapshot with Barricade's authoritative record when it becomes available.
+    """
+    if (not isinstance(sharecode,str) or not 3<=len(sharecode)<=32
+            or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in sharecode)):
+        raise ValueError('Invalid game share code')
+    history=c.Game(c.parse_history(history_csv)).history
+    if winner not in ('red','blue'):
+        raise ValueError('Finished game winner must be red or blue')
+    archive=os.path.join(ROOT,'study','archive');os.makedirs(archive,exist_ok=True)
+    path=os.path.join(archive,sharecode+'.json')
+    try:
+        with open(path,encoding='utf-8') as f:existing=json.load(f)
+        if (existing.get('shareCode')==sharecode
+                and c.Game(c.parse_history(existing.get('historyCsv',''))).history==history
+                and existing.get('source')!='live-overlay'):
+            return path
+    except (OSError,ValueError,TypeError):pass
+    snapshot=dict(shareCode=sharecode,historyCsv=','.join(history),
+                  player1Username=red,player2Username=blue,
+                  winner='1' if winner=='red' else '2',source='live-overlay',
+                  recordedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()))
+    temp=path+f'.{threading.get_ident()}.tmp'
+    with open(temp,'w',encoding='utf-8') as f:json.dump(snapshot,f,indent=2)
+    os.replace(temp,path)
+    if refresh:
+        def fetch():
+            try:
+                import collect_games
+                data=collect_games.get('/games/'+sharecode)
+                if (data.get('shareCode')!=sharecode or
+                        c.Game(c.parse_history(data.get('historyCsv',''))).history!=history):
+                    return
+                with open(temp,'w',encoding='utf-8') as f:json.dump(data,f,indent=2)
+                os.replace(temp,path)
+            except Exception:
+                try:
+                    if os.path.exists(temp):os.unlink(temp)
+                except OSError:pass
+        threading.Thread(target=fetch,daemon=True).start()
+    return path
+
+
+def game_share_code(value):
+    """Extract a validated share code from the overlay's path/query value."""
+    text=str(value or '')
+    parsed=urlparse(text)
+    code=''
+    if parsed.path.startswith('/game/'):
+        code=parsed.path.split('/',2)[2]
+    elif parsed.path=='/analysis':
+        code=parse_qs(parsed.query).get('game',[''])[0]
+    if (not 3<=len(code)<=32 or
+            any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in code)):
+        return ''
+    return code
+
+
+def sync_finished_game(code):
+    """Fetch and archive one completed public game; return True when finished."""
+    import collect_games
+    data=collect_games.get('/games/'+code)
+    if data.get('shareCode')!=code:
+        raise ValueError('Public game code mismatch')
+    history=c.Game(c.parse_history(data.get('historyCsv',''))).history
+    winner={'1':'red','2':'blue',1:'red',2:'blue'}.get(data.get('winner'))
+    if not data.get('finishedAt') and winner is None:
+        return False
+    if winner is None:
+        return False
+    archive=os.path.join(ROOT,'study','archive');os.makedirs(archive,exist_ok=True)
+    path=os.path.join(archive,code+'.json')
+    temp=path+f'.{threading.get_ident()}.tmp'
+    with open(temp,'w',encoding='utf-8') as f:json.dump(data,f,indent=2)
+    os.replace(temp,path)
+    if LEARNING_OK:
+        learning.record_game(','.join(history),winner,
+                             red_name=data.get('player1Username'),
+                             blue_name=data.get('player2Username'),sharecode=code)
+    return True
+
+
+def schedule_game_sync(game_id, interval=20, attempts=60):
+    """Poll an active public game in the background until its final record exists."""
+    code=game_share_code(game_id)
+    if not code:return False
+    with GAME_SYNC_LOCK:
+        if code in GAME_SYNC_JOBS:return False
+        GAME_SYNC_JOBS.add(code)
+    def run():
+        try:
+            for _ in range(attempts):
+                try:
+                    if sync_finished_game(code):return
+                except Exception:
+                    pass
+                time.sleep(interval)
+        finally:
+            with GAME_SYNC_LOCK:GAME_SYNC_JOBS.discard(code)
+    threading.Thread(target=run,daemon=True).start()
+    return True
 
 
 # On-demand opponent collection: build a player's model from games already in the
@@ -161,7 +271,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 import live_coach
-                result = live_coach.query({k:v[0] for k,v in parse_qs(u.query, keep_blank_values=True).items()})
+                params={k:v[0] for k,v in parse_qs(u.query, keep_blank_values=True).items()}
+                result = live_coach.query(params)
+                schedule_game_sync(params.get('game_id'))
                 self._send(200, result)
             except (ValueError, TypeError) as exc:
                 self._send(400, {'error': str(exc)})
@@ -347,7 +459,12 @@ class Handler(BaseHTTPRequestHandler):
                 # supplies red/blue directly; opponent is whichever side is not 'me'
                 saved = learning.record_game(h, winner, red_name=red, blue_name=blue,
                                              sharecode=sharecode)
-                self._send(200, {'recorded': saved, 'winner': winner, 'opponent': opp})
+                archived=None
+                if sharecode:
+                    archived=os.path.basename(archive_finished_game(
+                        sharecode,h,winner,red,blue))
+                self._send(200, {'recorded': saved, 'archived': archived,
+                                 'winner': winner, 'opponent': opp})
             except Exception as e:
                 self._send(400, {'error': str(e)})
             return

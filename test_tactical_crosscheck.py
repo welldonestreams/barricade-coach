@@ -51,6 +51,28 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertEqual(result['scored'][0][1], 'hh6')
         self.assertNotIn('tactical_override', result)
 
+    def test_selective_check_cannot_replace_an_mcts_wall(self):
+        hist='e2,e8,e3,e7,e4,e6,hd3,hg3,e5,he6,d6,hc6,he5,ve4,hb3,ha6,c6,vf5,vc5,va2'.split(',')
+        mm=dict(scored=[(0,'hc4'),(300,'vb4')],depth=3,
+                principal_variation=['hc4'],selective=True,beam=8)
+        with patch.object(c,'candidate_search',return_value=mm):
+            result=advice._tactical_crosscheck(hist,c.Game(hist).to_move,
+                                                mcts('vb4'),2)
+        self.assertEqual(result['scored'][0][1],'vb4')
+        self.assertNotIn('tactical_override',result)
+
+    def test_selective_check_can_replace_a_wasted_wall_with_pawn_tempo(self):
+        case=next(row for row in json.loads(Path('study/repair-gate-cases.json').read_text())
+                  if row.get('code')=='52s6kd' and row.get('ply')==16)
+        mm=dict(scored=[(0,'e5'),(300,'vb5')],depth=3,
+                principal_variation=['e5'],selective=True,beam=8)
+        with patch.object(c,'candidate_search',return_value=mm):
+            result=advice._tactical_crosscheck(case['history'],
+                                                c.Game(case['history']).to_move,
+                                                mcts('vb5'),2)
+        self.assertEqual(result['scored'][0][1],'e5')
+        self.assertEqual(result['tactical_override']['mcts_top'],'vb5')
+
     def test_mcts_gets_full_budget_before_bounded_tactical_check(self):
         budgets=[]
         def sample(*args,**kwargs):
@@ -105,6 +127,34 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertEqual(result['scored'][0][1],'g7')
         self.assertIn('best resistance',result['position_warning'])
         self.assertIn('looks badly losing',live_coach.explain(c.Game(hist),result))
+
+    def test_no_wall_pawn_shuffle_cannot_override_mcts(self):
+        hist='e2,e8,e3,e7,e4,e6,he3,d6,hc3,d5,ha3,hd5,vd4,hf5,hb5,vg4,vc5,vg2,vf2,d4,vc7,c4,f4,b4,g4,a4,g3,a5,g2,hh8,ha6,a6,hb8,b6,g1,c6,h1,c7,h2,hg3,h3,c8,i3,b8,i4,a8,h4,a9,h5,b9,h6,hg6'.split(',')
+        with patch.object(mcts_coach,'search',return_value=mcts('g6')):
+            result=advice.advise(hist,engine='mcts',seconds=4)
+        self.assertEqual(result['crosscheck_depth'],5)
+        self.assertEqual(result['scored'][0][1],'g6')
+        self.assertNotIn('tactical_override',result)
+
+    def test_no_wall_endgame_gets_stable_extended_mcts_budget(self):
+        hist='e2,e8,e3,e7,e4,e6,he3,d6,hc3,d5,ha3,hd5,vd4,hf5,hb5,vg4,vc5,vg2,vf2,d4,vc7,c4,f4,b4,g4,a4,g3,a5,g2,hh8,ha6,a6,hb8,b6,g1,c6,h1,c7,h2,hg3,h3,c8,i3,b8,i4,a8,h4,a9,h5,b9,h6,hg6'.split(',')
+        seen=[]
+        def sample(*args,**kwargs):
+            seen.append((args[2],args[3],kwargs.get('workers')))
+            return mcts('g6')
+        with patch.object(mcts_coach,'search',side_effect=sample):
+            result=advice.advise(hist,engine='mcts',seconds=4,seed=7)
+        self.assertEqual(seen,[(15.0,200000,8)])
+        self.assertTrue(result['extended_endgame_search'])
+        self.assertEqual(result['mcts_budget'],15.0)
+
+    def test_ambiguous_pawn_stop_expands_for_delayed_wall(self):
+        hist='he8,d9,hc8,he1,f1,hg1,g1,vh1,f1,vf8,e1,c9,d1,b9,d2,b8,va6,ha8,d3,hg7,e3,hh8,f3,b7,g3'.split(',')
+        with patch.object(mcts_coach,'search',return_value=mcts('c7')):
+            result=advice.advise(hist,engine='mcts',seconds=4)
+        self.assertTrue(result.get('crosscheck_expanded'))
+        self.assertIn(result['scored'][0][1],{'hf3','hf4','hf5','hf6'})
+        self.assertEqual(result['tactical_override']['mcts_top'],'c7')
 
     def test_benchmark_calls_live_decision_path(self):
         with patch.object(live_coach, 'query', return_value=dict(top=[(0,'e2')])) as query:

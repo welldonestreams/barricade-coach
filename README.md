@@ -123,12 +123,12 @@ The MCTS copyright, license, source commit and adapter differences are in
 `vendor/quoridor-ai/LICENSE` and `vendor/quoridor-ai/PROVENANCE.md`.
 
 
-## Firefox / Tampermonkey overlay (1.5)
+## Firefox / Tampermonkey overlay (1.6)
 
 Run START-COACH.cmd, then replace the existing Tampermonkey script with
 `overlay/barricade-live-coach.user.js` (also served at
 http://127.0.0.1:8810/barricade-live-coach.user.js). Save and reload Barricade.
-Do not run the old and new scripts together. Version 1.5 appears in the panel.
+Do not run the old and new scripts together. Version 1.6 appears in the panel.
 
 
 The overlay independently checks the numbered move list, pawn squares, placed
@@ -139,13 +139,22 @@ your side, independently of rotating the board. Steak-prefixed usernames and
 configured aliases are recognized. Green marks the recommended square or wall;
 it moves with scrolling/rotation and clears on a changed or uncertain position.
 Replay scrubbing with a full future move list fails closed rather than guessing.
+Coach 1.6 sends the share code independently of the optional post-game review.
+The local server polls that public game in the background until it is finished,
+then saves Barricade's authoritative record under `study/archive` and records the
+result once. This also covers resignations, where neither pawn reaches a goal.
 
 Live searches normally give parallel MCTS a full 4 seconds; uncontested central
 openings get 1.2 seconds (Python opening mode uses 0.35 seconds). In positions
 with walls, a bounded deterministic check then gets up to 3 seconds to catch
 the precise defensive walls that rollout search can miss. The normal complex
 query therefore takes about 4-7 seconds and remains below the overlay's
-18-second response deadline. All MCTS workers share one MCTS deadline.
+20-second response deadline. An ambiguous pawn-versus-wall result can trigger
+one wider follow-up check and take about 10-12 seconds. A rare endgame where the
+player has no walls and the opponent has at most three gets a 15-second MCTS
+search with eight independent roots because shorter runs were measurably
+unstable; the small deterministic check keeps the complete response below 18
+seconds. All MCTS workers share one MCTS deadline.
 `/api/live` checks the board/history match and legality again before responding.
 Route changes and a searched reply explain the recommendation; short searches are
 not proof of optimal play. Opponent data breaks exact tactical ties only, from
