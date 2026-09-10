@@ -101,6 +101,7 @@ def top_player_files(files):
     for path in files:
         try:data=json.loads(path.read_text(encoding='utf-8-sig'))
         except (OSError,json.JSONDecodeError):continue
+        if not isinstance(data,dict):continue
         if data.get('player1Username') in names or data.get('player2Username') in names:kept.append(path)
     return kept
 
