@@ -2,6 +2,7 @@
 from functools import lru_cache
 import json
 from pathlib import Path
+import coach as c
 
 ROOT=Path(__file__).resolve().parent
 CASES=ROOT/'study'/'repair-gate-cases.json'
@@ -37,3 +38,16 @@ def rows():
 def histories():
     """Canonical game histories that must never be used to train a candidate."""
     return frozenset(tuple(row['history']) for row in rows())
+
+
+def position_key(history):
+    """Transposition-independent board identity for leakage prevention."""
+    g=c.Game(history)
+    return (g.pawns[c.RED],g.pawns[c.BLUE],tuple(sorted(g.walls)),
+            g.remaining[c.RED],g.remaining[c.BLUE],g.to_move)
+
+
+@lru_cache(maxsize=1)
+def positions():
+    """Held-out board states, including equivalent move-order transpositions."""
+    return frozenset(position_key(row['history']) for row in rows())

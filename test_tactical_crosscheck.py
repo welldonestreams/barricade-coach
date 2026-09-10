@@ -148,6 +148,18 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertTrue(result['extended_endgame_search'])
         self.assertEqual(result['mcts_budget'],15.0)
 
+    def test_offline_selfplay_can_disable_production_safety_cost(self):
+        hist='e2,e8,e3,e7,e4,e6,he3,d6,hc3,d5,ha3,hd5,vd4,hf5,hb5,vg4,vc5,vg2,vf2,d4,vc7,c4,f4,b4,g4,a4,g3,a5,g2,hh8,ha6,a6,hb8,b6,g1,c6,h1,c7,h2,hg3,h3,c8,i3,b8,i4,a8,h4,a9,h5,b9,h6,hg6'.split(',')
+        seen=[]
+        def sample(*args,**kwargs):seen.append(args[2]);return mcts('g6')
+        with patch.object(mcts_coach,'search',side_effect=sample), \
+             patch.object(c,'candidate_search',side_effect=AssertionError('disabled')):
+            result=advice.advise(hist,engine='mcts',seconds=.18,seed=1,
+                                 policy_model=False,production_safety=False)
+        self.assertTrue(.09<seen[0]<.18)
+        self.assertFalse(result['extended_endgame_search'])
+        self.assertNotIn('crosscheck_depth',result)
+
     def test_ambiguous_pawn_stop_expands_for_delayed_wall(self):
         hist='he8,d9,hc8,he1,f1,hg1,g1,vh1,f1,vf8,e1,c9,d1,b9,d2,b8,va6,ha8,d3,hg7,e3,hh8,f3,b7,g3'.split(',')
         with patch.object(mcts_coach,'search',return_value=mcts('c7')):

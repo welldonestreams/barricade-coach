@@ -45,6 +45,15 @@ class PolicyValueTests(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row['teacher']['depth'],2)
 
+    def test_teacher_can_balance_target_side(self):
+        fixture=Path(__file__).with_name('study')/'additional'/'1ttbdt.json'
+        answer=dict(depth=2,scored=[(0,'e2')],nodes=10,tt_hits=0,elapsed=.1)
+        with patch.object(c,'search',return_value=answer):
+            red=teacher_data.record(fixture,__import__('random').Random(1),8,14,3,1,c.RED)
+            blue=teacher_data.record(fixture,__import__('random').Random(1),8,14,3,1,c.BLUE)
+        self.assertEqual(len(red['history'])%2,c.RED)
+        self.assertEqual(len(blue['history'])%2,c.BLUE)
+
 
     def test_teacher_search_reports_transposition_reuse_metric(self):
         data=json.loads((Path(__file__).with_name('study')/'additional'/'1ttbdt.json').read_text())
@@ -182,6 +191,19 @@ class PolicyValueTests(unittest.TestCase):
             path.write_text('\n'.join(json.dumps(row) for row in (leaked,normal)),encoding='utf-8')
             loaded=list(train_policy.examples([path]))
         self.assertEqual([row['game_hash'] for row in loaded],['normal'])
+
+    def test_repair_gate_filters_equivalent_move_order_transpositions(self):
+        gate_hist=['ha1','hc1','ha3','hc3']
+        transposed=['ha3','hc3','ha1','hc1']
+        held={repair_gate.position_key(gate_hist)}
+        self.assertEqual(repair_gate.position_key(gate_hist),repair_gate.position_key(transposed))
+        row=dict(history=transposed,split='train',game_hash='leaked',policy={'e2':1})
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'teacher.jsonl';path.write_text(json.dumps(row)+'\n',encoding='utf-8')
+            with patch.object(repair_gate,'histories',return_value=frozenset({tuple(gate_hist)})), \
+                 patch.object(repair_gate,'positions',return_value=held):
+                self.assertEqual(list(train_policy.examples([path])),[])
+                self.assertEqual(list(train_nn.load_rows([path])),[])
 
     def test_arena_holdout_excludes_repair_gate_histories(self):
         gate_case=json.loads((Path(__file__).with_name('study')/'repair-gate-cases.json').read_text())[0]

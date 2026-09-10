@@ -49,7 +49,7 @@ def approved_prior(game, engine):
 
 def advise(history, side=None, depth=2, seconds=5.0, engine='python',
            opp_name=None, opp_color=None, rollouts=60000, seed=None,
-           policy_model=None):
+           policy_model=None, production_safety=True):
     started=time.monotonic();deadline=started+seconds
     hist=list(history);game=c.Game(hist)
     side=game.to_move if side is None else side
@@ -65,7 +65,7 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
         # still recommend the backwards h5 shuffle. Spend a longer budget and
         # eight independent roots only there; it remains below the overlay's
         # hard response deadline.
-        long_no_wall_endgame=(game.remaining[side]==0 and
+        long_no_wall_endgame=(production_safety and game.remaining[side]==0 and
                               sum(game.remaining.values())<=3)
         budget=max(.001,15.0 if long_no_wall_endgame else seconds-.08)
         search_rollouts=max(rollouts,200000) if long_no_wall_endgame else rollouts
@@ -86,7 +86,7 @@ def advise(history, side=None, depth=2, seconds=5.0, engine='python',
     else:
         raise ValueError('Engine must be python or mcts')
     result['engine']=engine
-    if (engine=='mcts' and game.walls and any(game.remaining.values())
+    if (production_safety and engine=='mcts' and game.walls and any(game.remaining.values())
             and result.get('scored') and not result.get('fallback')
             and not result.get('forced_loss') and result.get('tactical')!='immediate win'):
         # Pawn recommendations in wall positions are where rollout search has

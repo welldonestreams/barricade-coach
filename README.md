@@ -163,6 +163,18 @@ asynchronous and never blocks the move query. No matching evidence is shown plai
 
 ## Training without automatic self-reinforcement
 
+`RUN-NIGHTLY-IMPROVEMENT.cmd` runs the guarded overnight pipeline at below-normal
+Windows priority. It refreshes steak-account games twice before training,
+deeply relabels fully coach-followed losses, generates a color-balanced teacher
+set from the leaderboard archive, adds dedicated depth-5/6 one-sided-wall
+endgames, and creates a frozen raw-MCTS self-play set. The candidate never
+trains on its own output. It reaches the color-swapped 100-pair arena only after
+the raw repair screen and the production guided-vs-unguided parity check pass.
+Only `arena.py --promote` may replace the live champion, and only when every
+legality, repair, latency, confidence, and code-hash condition passes. Progress
+and per-stage logs are written under `memory/nightly`; rerunning with the same
+`--run-dir` resumes completed stages.
+
 `python training.py --games 100 --workers 2 --evaluate 100` runs bounded parallel
 experiments from randomly sampled, validated positions in the current top-100
 archive. Two CPU cores are reserved where possible; Windows workers run below

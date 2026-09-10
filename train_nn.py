@@ -52,8 +52,10 @@ def load_rows(paths, split='train'):
     try:
         import repair_gate
         held_out_histories = repair_gate.histories()
+        held_out_positions = repair_gate.positions()
     except ImportError:
         held_out_histories = frozenset()
+        held_out_positions = frozenset()
     for p in paths:
         p = Path(p)
         source = 'loss' if 'loss' in p.stem.casefold() else 'teacher'
@@ -107,7 +109,8 @@ def load_rows(paths, split='train'):
                     continue
                 # The repair gate evaluates generalization on positions the
                 # candidate must NEVER have seen in training.
-                if tuple(g.history) in held_out_histories:
+                if (tuple(g.history) in held_out_histories or
+                        position_key(g) in held_out_positions):
                     continue
                 seen.add(key)
                 row.setdefault('source', source)

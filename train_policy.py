@@ -16,7 +16,7 @@ ROOT=Path(__file__).resolve().parent
 
 
 def examples(paths,split='train'):
-    seen=set();held_out_histories=repair_gate.histories()
+    seen=set();held_out_histories=repair_gate.histories();held_out_positions=repair_gate.positions()
     for path in paths:
         path=Path(path)
         if path.suffix=='.json':
@@ -47,7 +47,9 @@ def examples(paths,split='train'):
                 # The repair gate evaluates generalization on these positions.
                 # Filter every source, including a harvested teacher JSONL, so a
                 # matching opening state cannot leak in through another game.
-                if tuple(g.history) in held_out_histories:continue
+                state=(g.pawns[c.RED],g.pawns[c.BLUE],tuple(sorted(g.walls)),
+                       g.remaining[c.RED],g.remaining[c.BLUE],g.to_move)
+                if tuple(g.history) in held_out_histories or state in held_out_positions:continue
                 key=(row.get('game_hash'),len(g.history))
                 if row.get('split')!=split or row.get('player_holdout') or key in seen:continue
                 seen.add(key);yield row
