@@ -38,7 +38,8 @@ def review_loss(item, seconds, margin):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--accounts', default='steak2222', help='comma-separated exact usernames')
+    parser.add_argument('--accounts', default='steak2222,steak222',
+                        help='comma-separated exact usernames')
     parser.add_argument('--prefix', default='steak', help='also select usernames with this prefix')
     parser.add_argument('--seconds', type=float, default=12,
                         help='independent offline search budget per user turn in a verified loss')

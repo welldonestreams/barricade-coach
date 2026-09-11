@@ -163,7 +163,8 @@ asynchronous and never blocks the move query. No matching evidence is shown plai
 
 ## Training without automatic self-reinforcement
 
-`RUN-NIGHTLY-IMPROVEMENT.cmd` runs the guarded overnight pipeline at below-normal
+`RUN-NIGHTLY-IMPROVEMENT.cmd` runs the guarded overnight pipeline for the
+`steak2222` and `steak222` accounts at below-normal
 Windows priority. It refreshes steak-account games twice before training,
 deeply relabels fully coach-followed losses, generates a color-balanced teacher
 set from the leaderboard archive, adds dedicated depth-5/6 one-sided-wall
@@ -174,6 +175,13 @@ Only `arena.py --promote` may replace the live champion, and only when every
 legality, repair, latency, confidence, and code-hash condition passes. Progress
 and per-stage logs are written under `memory/nightly`; rerunning with the same
 `--run-dir` resumes completed stages.
+
+Each new run records a fresh master seed, so later cycles sample new games and
+board states. Candidate training also keeps the independent teacher, late-game,
+and raw-MCTS corpora from the three most recent completed cycles. Candidate
+models, promotion reports, and model-guided league output are excluded from this
+rolling history. Learning therefore accumulates verified independent evidence
+without training a candidate on its own unvalidated choices.
 
 `python training.py --games 100 --workers 2 --evaluate 100` runs bounded parallel
 experiments from randomly sampled, validated positions in the current top-100

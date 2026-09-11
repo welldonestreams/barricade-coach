@@ -10,6 +10,7 @@ import endgame
 import learning
 import live_coach
 import mcts_coach
+import nightly_improve
 
 
 class RankingTests(unittest.TestCase):
@@ -66,6 +67,30 @@ class DeadlineTests(unittest.TestCase):
         self.assertTrue(r['timed_out'])
         self.assertEqual(r['simulations'],512)
         self.assertEqual(r['scored'],[(-480,'e2')])
+
+
+class NightlyTrainingTests(unittest.TestCase):
+    def test_cumulative_history_uses_only_independent_completed_corpora(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(nightly_improve,'NIGHTLY',Path(tmp)):
+            old=Path(tmp)/'old';new=Path(tmp)/'new';active=Path(tmp)/'active'
+            current=Path(tmp)/'current'
+            for path in (old,new,active,current):path.mkdir()
+            (old/'status.json').write_text(json.dumps(
+                dict(state='complete',finished='2026-09-09T01:00:00Z')))
+            (new/'status.json').write_text(json.dumps(
+                dict(state='complete',finished='2026-09-10T01:00:00Z')))
+            (active/'status.json').write_text(json.dumps(
+                dict(state='running',finished='2026-09-11T01:00:00Z')))
+            for path in (old,new,active):
+                (path/'archive-teacher.jsonl').write_text('{}\n')
+                (path/'candidate').mkdir()
+                (path/'candidate'/'model.json').write_text('{}')
+                (path/'promoted-league.jsonl').write_text('{}\n')
+            selected=nightly_improve.prior_training_inputs(current,limit=1)
+            self.assertEqual(selected,[new/'archive-teacher.jsonl'])
+            self.assertFalse(any('candidate' in str(path) or
+                                 'promoted-league' in str(path) for path in selected))
 
 
 class EndgameTests(unittest.TestCase):
