@@ -183,6 +183,12 @@ models, promotion reports, and model-guided league output are excluded from this
 rolling history. Learning therefore accumulates verified independent evidence
 without training a candidate on its own unvalidated choices.
 
+`python nightly_improve.py --retrain-only --history-runs 3` immediately
+rebuilds and gates a candidate from those completed independent corpora after a
+model-feature change. Neural inputs are scaled and encode an exact normalized
+slot for every pawn destination and wall placement, while retaining route,
+resilience, geometry, and complete board-wall features.
+
 `python training.py --games 100 --workers 2 --evaluate 100` runs bounded parallel
 experiments from randomly sampled, validated positions in the current top-100
 archive. Two CPU cores are reserved where possible; Windows workers run below

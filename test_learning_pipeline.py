@@ -420,8 +420,20 @@ class PolicyValueTests(unittest.TestCase):
         wall=nn_model.action_features(g,'hd3')
         pawn=nn_model.action_features(g,'e5')
         self.assertEqual(len(wall),len(pawn))
-        self.assertEqual(len(wall),11)
+        self.assertEqual(len(wall),220)
         self.assertTrue(all(isinstance(v,float) for v in wall))
+
+    def test_neural_action_slots_are_exact_and_color_normalized(self):
+        import nn_model
+        red=c.Game('e2,e8,e3,e7'.split(','))
+        blue=c.Game('e2,e8,e3'.split(','))
+        pawn=nn_model.action_features(red,'e4')[-nn_model.ACTION_SLOTS:]
+        wall=nn_model.action_features(red,'hd3')[-nn_model.ACTION_SLOTS:]
+        mirrored=nn_model.action_features(blue,'hd6')[-nn_model.ACTION_SLOTS:]
+        self.assertEqual(sum(pawn),1.0)
+        self.assertEqual(sum(wall),1.0)
+        self.assertEqual(wall,mirrored)
+        self.assertNotEqual(pawn,wall)
 
     def test_neural_loader_rejects_stale_or_malformed_dimensions(self):
         import nn_model

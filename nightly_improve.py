@@ -111,6 +111,8 @@ def main():
                     help='completed independent nightly corpora to retain')
     ap.add_argument('--seed',type=int,
                     help='master seed (generated and recorded when omitted)')
+    ap.add_argument('--retrain-only',action='store_true',
+                    help='reuse completed independent corpora after a model-code change')
     ap.add_argument('--run-dir');args=ap.parse_args()
     if args.history_runs<0:ap.error('--history-runs must be non-negative')
     seed=args.seed if args.seed is not None else time.time_ns()%2_000_000_000
@@ -125,28 +127,32 @@ def main():
     stamp=time.strftime('%Y%m%d-%H%M%S',time.localtime())
     run_dir=Path(args.run_dir).resolve() if args.run_dir else NIGHTLY/stamp
     run=Run(run_dir)
-    run.status['seed']=seed;run.status['history_runs']=args.history_runs;run.write()
+    run.status['seed']=seed;run.status['history_runs']=args.history_runs
+    run.status['retrain_only']=args.retrain_only;run.write()
     teacher=run_dir/'archive-teacher.jsonl';late=run_dir/'late-teacher.jsonl'
     baseline=run_dir/'frozen-raw-selfplay.jsonl';verified=run_dir/'verified-loss-teacher.jsonl'
     candidate=run_dir/'candidate'/'model.json';candidate.parent.mkdir(parents=True,exist_ok=True)
     try:
         common=['--accounts',args.accounts,'--prefix',args.prefix,'--seconds','30','--margin','30']
         run.step('import-start',['update_real_games.py',*common],optional=True)
-        run.step('frozen-selfplay',['league_selfplay.py','--games',args.selfplay_games,
-                 '--seconds','.18','--workers','4','--raw-only','--no-production-safety','--seed',seed,
-                 '--output',rel(baseline)])
-        run.step('archive-teacher',['teacher_data.py','--positions',args.teacher_positions,
-                 '--depth','3','--seconds','12','--workers','8','--balance-colors','--top-players-only',
-                 '--seed',seed+1,'--output',rel(teacher)])
-        run.step('late-teacher',['late_teacher.py','--positions',args.late_positions,
-                 '--scan-games','30000','--depth','6','--min-depth','5','--seconds','20',
-                 '--workers','8','--seed',seed+2,'--output',rel(late)])
+        generated=[]
+        if not args.retrain_only:
+            run.step('frozen-selfplay',['league_selfplay.py','--games',args.selfplay_games,
+                     '--seconds','.18','--workers','4','--raw-only','--no-production-safety','--seed',seed,
+                     '--output',rel(baseline)])
+            run.step('archive-teacher',['teacher_data.py','--positions',args.teacher_positions,
+                     '--depth','3','--seconds','12','--workers','8','--balance-colors','--top-players-only',
+                     '--seed',seed+1,'--output',rel(teacher)])
+            run.step('late-teacher',['late_teacher.py','--positions',args.late_positions,
+                     '--scan-games','30000','--depth','6','--min-depth','5','--seconds','20',
+                     '--workers','8','--seed',seed+2,'--output',rel(late)])
+            generated=[teacher,late,baseline]
         run.step('import-pretrain',['update_real_games.py',*common],optional=True)
         run.step('verified-loss-teacher',['verified_loss_teacher.py','--reports',
                  'study/regressions/verified-*.json','--output',rel(verified),
                  '--depth','4','--min-depth','3','--seconds','30','--workers','8'])
         history_inputs=prior_training_inputs(run_dir,args.history_runs)
-        inputs=[teacher,late,baseline,verified,*history_inputs,
+        inputs=[*generated,verified,*history_inputs,
                 ROOT/'study/loss-teacher-walls.jsonl',ROOT/'study/loss-teacher-pawns.jsonl',
                 ROOT/'study/deep-wall-teacher.jsonl']
         run.status['training_inputs']=[str(path) for path in inputs]
@@ -155,7 +161,11 @@ def main():
         run.step('train-candidate',['train_nn.py',*[str(p) for p in inputs],
                  '--epochs','20','--hidden','512','--teacher-frac','.65',
                  '--feature-workers','8','--seed',seed+3,'--output',str(candidate)])
-        run.step('promotion-gate',['arena.py',str(candidate),str(teacher),'--pairs','100',
+        arena_teacher=teacher if teacher in generated else next(
+            (path for path in reversed(history_inputs) if path.name=='archive-teacher.jsonl'),None)
+        if arena_teacher is None:
+            raise RuntimeError('retrain-only requires a completed archive-teacher corpus')
+        run.step('promotion-gate',['arena.py',str(candidate),str(arena_teacher),'--pairs','100',
                  '--seconds','1','--workers','2','--repair-workers','1','--player-holdout-only',
                  '--measure','--promote'])
         report=json.loads((candidate.parent/'arena-report.json').read_text(encoding='utf-8'))

@@ -26,6 +26,7 @@ import coach as c
 SCHEMA = 2
 HIDDEN = 256
 MAXW = 4_000_000
+ACTION_SLOTS = 81 + 128
 
 
 def _np():
@@ -56,18 +57,20 @@ def state_features(g, side=None):
     op_res = c.path_resilience(frozenset(g.walls), opp, c.GOALS[1 - side])
     f = [
         # pawn positions (normalized)
-        float(mine[0]), float(my_adv),
-        float(opp[0]), float(op_adv),
+        (mine[0] - 4.0) / 4.0, (my_adv - 4.0) / 4.0,
+        (opp[0] - 4.0) / 4.0, (op_adv - 4.0) / 4.0,
         # relative geometry
-        float(mine[0] - opp[0]), float(my_adv - op_adv),
+        (mine[0] - opp[0]) / 8.0, (my_adv - op_adv) / 8.0,
         # wall reserves
-        float(g.remaining[side]), float(g.remaining[1 - side]),
+        g.remaining[side] / 10.0, g.remaining[1 - side] / 10.0,
         # route / flexibility
-        float(my_route), float(op_route), float(delta),
-        float(my_res), float(op_res),
-        float(g.route_options(side)), float(g.route_options(1 - side)),
+        min(24.0, float(my_route)) / 24.0,
+        min(24.0, float(op_route)) / 24.0, delta / 12.0,
+        my_res / float(c.RESILIENCE_CAP), op_res / float(c.RESILIENCE_CAP),
+        g.route_options(side) / float(c.RESILIENCE_CAP),
+        g.route_options(1 - side) / float(c.RESILIENCE_CAP),
         # stage
-        float(min(4, len(g.walls) // 5)),
+        min(4, len(g.walls) // 5) / 4.0,
     ]
     # wall layout, normalized: 64 h-slots + 64 v-slots
     wall_bits = _wall_bits(g.walls, side)
@@ -91,6 +94,25 @@ def _wall_bits(walls, side):
     return bits
 
 
+def _action_bits(move, side):
+    """One exact, color-normalized destination slot for every legal action."""
+    bits = [0.0] * ACTION_SLOTS
+    if len(move) == 3:
+        file_idx = c.FILES[move[1]]
+        rank = int(move[2])
+        if side == c.BLUE:
+            rank = 9 - rank
+        slot = file_idx * 8 + (rank - 1)
+        if move[0] == 'v':
+            slot += 64
+        bits[81 + slot] = 1.0
+    else:
+        file_idx = c.FILES[move[0]]
+        rank = int(move[1]) - 1
+        bits[_advance(rank, side) * 9 + file_idx] = 1.0
+    return bits
+
+
 def action_context(g,side=None):
     """Metrics shared by every candidate action at one root position."""
     side=g.to_move if side is None else side
@@ -109,13 +131,13 @@ def action_features(g, move, side=None, context=None):
         if side == c.BLUE:
             rank = 9 - rank
         typ = [1.0, 1.0 if move[0] == 'v' else 0.0]
-        pos = [float(file_idx), float(rank)]
+        pos = [(file_idx - 3.5) / 3.5, (rank - 4.5) / 3.5]
     else:
         file_idx = c.FILES[move[0]]
         rank = int(move[1]) - 1  # 0-indexed row
         adv = _advance(rank, side)
         typ = [0.0, 0.0]
-        pos = [float(file_idx), float(adv)]
+        pos = [(file_idx - 4.0) / 4.0, (adv - 4.0) / 4.0]
     child = g.copy()
     child._play(move)
     before_me=context['my_route'];before_op=context['op_route']
@@ -123,7 +145,7 @@ def action_features(g, move, side=None, context=None):
     after_op = child.race_distance(1 - side)
     my_change = max(-4, min(4, after_me - before_me))
     op_change = max(-4, min(4, after_op - before_op))
-    f = typ + pos + [float(my_change), float(op_change)]
+    f = typ + pos + [my_change / 4.0, op_change / 4.0]
     if is_wall:
         net = (after_op - before_op) - (after_me - before_me)
         before_res = c.path_resilience(frozenset(g.walls), g.pawns[1 - side], c.GOALS[1 - side])
@@ -134,12 +156,13 @@ def action_features(g, move, side=None, context=None):
         opp_adv=_advance(g.pawns[1-side][1],side)
         file_distance=abs((file_idx+.5)-g.pawns[1-side][0])
         rank_distance=abs((rank-.5)-opp_adv)
-        f += [float(max(-4, min(4, net))), float(max(-2, min(2, res_drop))),
-              float(file_distance),float(rank_distance)]
+        f += [max(-4, min(4, net)) / 4.0,
+              max(-2, min(2, res_drop)) / 2.0,
+              file_distance / 8.0, rank_distance / 8.0]
     else:
         f += [0.0,0.0,0.0,0.0]
     f.append(1.0 if child.winner == side else 0.0)
-    return f
+    return f + _action_bits(move, side)
 
 
 def dims():
