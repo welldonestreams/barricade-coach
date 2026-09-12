@@ -1,0 +1,517 @@
+[
+  {
+    "code": "81s8yr",
+    "ply": 11,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6"
+    ],
+    "best": "hb1",
+    "acceptable": [
+      "hb1",
+      "hb2",
+      "hb3",
+      "hc1",
+      "hc2"
+    ]
+  },
+  {
+    "code": "81s8yr",
+    "ply": 13,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "ha6"
+    ],
+    "best": "hb3",
+    "acceptable": [
+      "hb3"
+    ]
+  },
+  {
+    "code": "81s8yr",
+    "ply": 15,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "ha6",
+      "vc4",
+      "ve4"
+    ],
+    "best": "vd5",
+    "acceptable": [
+      "vd5",
+      "hb5"
+    ],
+    "evidence": "completed selective depth-3 scores vd5 and hb5 equally; depth-2 prefers vd5"
+  },
+  {
+    "code": "81s8yr",
+    "ply": 19,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "ha6",
+      "vc4",
+      "ve4",
+      "hb5",
+      "va4",
+      "hf5",
+      "va2"
+    ],
+    "best": "vd5",
+    "acceptable": [
+      "vd5"
+    ]
+  },
+  {
+    "code": "81s8yr",
+    "ply": 21,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "ha6",
+      "vc4",
+      "ve4",
+      "hb5",
+      "va4",
+      "hf5",
+      "va2",
+      "vf7",
+      "hg6"
+    ],
+    "best": "vd5",
+    "acceptable": [
+      "vd5"
+    ]
+  },
+  {
+    "code": "81s8yr",
+    "ply": 23,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "ha6",
+      "vc4",
+      "ve4",
+      "hb5",
+      "va4",
+      "hf5",
+      "va2",
+      "vf7",
+      "hg6",
+      "hh5",
+      "hh7"
+    ],
+    "best": "vd5",
+    "acceptable": [
+      "vd5"
+    ]
+  },
+  {
+    "code": "52s6kd",
+    "ply": 12,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3"
+    ],
+    "best": "d6",
+    "acceptable": [
+      "d6",
+      "hf7",
+      "hf8",
+      "hg6",
+      "hg7",
+      "hg8"
+    ]
+  },
+  {
+    "code": "52s6kd",
+    "ply": 14,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "vf5",
+      "va6"
+    ],
+    "best": "d6",
+    "acceptable": [
+      "d6",
+      "e5",
+      "ve3",
+      "ve4",
+      "hf4",
+      "hf7",
+      "hf8",
+      "hg4",
+      "hg5",
+      "hg6",
+      "hg7",
+      "hg8"
+    ]
+  },
+  {
+    "code": "52s6kd",
+    "ply": 16,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "vf5",
+      "va6",
+      "hg4",
+      "vd5"
+    ],
+    "best": "e5",
+    "acceptable": [
+      "e5"
+    ]
+  },
+  {
+    "code": "52s6kd",
+    "ply": 18,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "he6",
+      "hf3",
+      "hc6",
+      "hh3",
+      "vf5",
+      "va6",
+      "hg4",
+      "vd5",
+      "hh5",
+      "hd4"
+    ],
+    "best": "vg3",
+    "acceptable": [
+      "vg3",
+      "vg5",
+      "vh4"
+    ]
+  },
+  {
+    "code": "zjj0bn",
+    "ply": 27,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "he3",
+      "hd4",
+      "f4",
+      "hf4",
+      "vc5",
+      "ve4",
+      "vc7",
+      "hh4",
+      "hd7",
+      "f6",
+      "hf7",
+      "g6",
+      "g4",
+      "h6",
+      "hh6",
+      "g6",
+      "hf6",
+      "f6",
+      "g3",
+      "vf2"
+    ],
+    "best": "vg1",
+    "acceptable": [
+      "vg1"
+    ]
+  },
+  {
+    "code": "zjj0bn",
+    "ply": 29,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "he3",
+      "hd4",
+      "f4",
+      "hf4",
+      "vc5",
+      "ve4",
+      "vc7",
+      "hh4",
+      "hd7",
+      "f6",
+      "hf7",
+      "g6",
+      "g4",
+      "h6",
+      "hh6",
+      "g6",
+      "hf6",
+      "f6",
+      "g3",
+      "vf2",
+      "g2",
+      "hg1"
+    ],
+    "best": "hg3",
+    "acceptable": [
+      "hg3",
+      "hh2",
+      "hh3",
+      "hg2"
+    ]
+  },
+  {
+    "code": "tzr1w5",
+    "ply": 28,
+    "history": [
+      "d1",
+      "e8",
+      "c1",
+      "e7",
+      "b1",
+      "e6",
+      "vb1",
+      "e5",
+      "vb3",
+      "e4",
+      "vb5",
+      "e3",
+      "vb7",
+      "e2",
+      "he1",
+      "hb2",
+      "hc1",
+      "e3",
+      "a1",
+      "f3",
+      "a2",
+      "g3",
+      "a3",
+      "g2",
+      "hg1",
+      "g3",
+      "a4"
+    ],
+    "best": "h3",
+    "acceptable": [
+      "h3"
+    ]
+  },
+  {
+    "code": "benchmark-blue-2673606728",
+    "ply": 20,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "e5",
+      "e4",
+      "e6",
+      "he6",
+      "d6",
+      "hc6",
+      "c6",
+      "ha6",
+      "d6",
+      "vf5",
+      "hf3",
+      "e3",
+      "d5"
+    ],
+    "best": "hg4",
+    "acceptable": [
+      "hg4"
+    ]
+  },
+  {
+    "code": "5r7nxm",
+    "ply": 14,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "e5",
+      "e4",
+      "he3",
+      "he5",
+      "hb5",
+      "vd5",
+      "vc6"
+    ],
+    "best": "hg5",
+    "acceptable": [
+      "hg5",
+      "vf5"
+    ],
+    "evidence": "five 240k-simulation MCTS runs rejected played d4"
+  },
+  {
+    "code": "0m73sm",
+    "ply": 21,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "hd3",
+      "hg3",
+      "e5",
+      "he6",
+      "d6",
+      "hc6",
+      "he5",
+      "ve4",
+      "hb3",
+      "ha6",
+      "c6",
+      "vf5",
+      "vc5",
+      "va2"
+    ],
+    "best": "vb4",
+    "acceptable": [
+      "vb4",
+      "va4"
+    ],
+    "evidence": "three independent long MCTS runs plus selective depth-3 rejected played hc4"
+  },
+  {
+    "code": "4wpcv0",
+    "ply": 26,
+    "history": [
+      "he8",
+      "d9",
+      "hc8",
+      "he1",
+      "f1",
+      "hg1",
+      "g1",
+      "vh1",
+      "f1",
+      "vf8",
+      "e1",
+      "c9",
+      "d1",
+      "b9",
+      "d2",
+      "b8",
+      "va6",
+      "ha8",
+      "d3",
+      "hg7",
+      "e3",
+      "hh8",
+      "f3",
+      "b7",
+      "g3"
+    ],
+    "best": "hf3",
+    "acceptable": [
+      "hf3",
+      "hf4",
+      "hf5",
+      "hf6"
+    ],
+    "evidence": "completed wider depth-3 check found a delayed defensive wall after depth 2 stopped on c7"
+  }
+]

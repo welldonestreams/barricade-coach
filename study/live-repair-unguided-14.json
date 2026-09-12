@@ -1,0 +1,971 @@
+{
+  "build": "working-tree",
+  "seconds": 4,
+  "seeds": [
+    2026090701,
+    2026090702,
+    2026090703,
+    2026090704,
+    2026090705
+  ],
+  "cases": 14,
+  "correct": 14,
+  "runs": 70,
+  "correct_runs": 70,
+  "illegal": 0,
+  "fallbacks": 0,
+  "p95_elapsed": 4.003,
+  "max_elapsed": 4.012,
+  "elapsed": 189.85,
+  "rows": [
+    {
+      "code": "81s8yr",
+      "ply": 11,
+      "expected": "hb1",
+      "acceptable": [
+        "hb1",
+        "hb2",
+        "hb3",
+        "hc1",
+        "hc2"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.007,
+          "simulations": 33792,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.001,
+          "simulations": 34944,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.0,
+          "simulations": 36096,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.009,
+          "simulations": 35072,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.0,
+          "simulations": 36352,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 13,
+      "expected": "hb3",
+      "acceptable": [
+        "hb3"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.001,
+          "simulations": 39296,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.799,
+          "simulations": 38528,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.705,
+          "simulations": 39424,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.837,
+          "simulations": 39296,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.902,
+          "simulations": 39424,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 15,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.811,
+          "simulations": 36352,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.767,
+          "simulations": 35456,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.785,
+          "simulations": 36480,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.837,
+          "simulations": 36224,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.735,
+          "simulations": 36608,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 19,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.79,
+          "simulations": 38912,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.378,
+          "simulations": 39552,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.447,
+          "simulations": 39552,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.417,
+          "simulations": 39680,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.309,
+          "simulations": 39040,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 21,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.924,
+          "simulations": 36992,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.329,
+          "simulations": 37120,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.308,
+          "simulations": 36864,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.318,
+          "simulations": 37760,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.297,
+          "simulations": 36224,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 23,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.775,
+          "simulations": 39552,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.285,
+          "simulations": 39808,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.303,
+          "simulations": 38912,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.288,
+          "simulations": 40960,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.336,
+          "simulations": 42240,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 12,
+      "expected": "d6",
+      "acceptable": [
+        "d6",
+        "hf7",
+        "hf8",
+        "hg6",
+        "hg7",
+        "hg8"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.007,
+          "simulations": 37376,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.003,
+          "simulations": 36992,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.012,
+          "simulations": 36992,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.003,
+          "simulations": 37120,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.0,
+          "simulations": 36992,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 14,
+      "expected": "d6",
+      "acceptable": [
+        "d6",
+        "e5",
+        "ve3",
+        "ve4",
+        "hf4",
+        "hf7",
+        "hf8",
+        "hg4",
+        "hg5",
+        "hg6",
+        "hg7",
+        "hg8"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.363,
+          "simulations": 36736,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.085,
+          "simulations": 37376,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.088,
+          "simulations": 37248,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.147,
+          "simulations": 36736,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "d6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.306,
+          "simulations": 38016,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 16,
+      "expected": "e5",
+      "acceptable": [
+        "e5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.944,
+          "simulations": 30976,
+          "depth": 2,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.228,
+          "simulations": 31360,
+          "depth": 2,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.209,
+          "simulations": 31360,
+          "depth": 2,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.204,
+          "simulations": 30976,
+          "depth": 2,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.25,
+          "simulations": 31488,
+          "depth": 2,
+          "override": true,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 18,
+      "expected": "vg3",
+      "acceptable": [
+        "vg3",
+        "vg5",
+        "vh4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.354,
+          "simulations": 30336,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vh4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.419,
+          "simulations": 30208,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.404,
+          "simulations": 31104,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vh4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.486,
+          "simulations": 31104,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 2.446,
+          "simulations": 31488,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "zjj0bn",
+      "ply": 27,
+      "expected": "vg1",
+      "acceptable": [
+        "vg1"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.704,
+          "simulations": 18048,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.591,
+          "simulations": 18048,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.685,
+          "simulations": 18304,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.629,
+          "simulations": 17536,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.577,
+          "simulations": 17536,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "zjj0bn",
+      "ply": 29,
+      "expected": "hg3",
+      "acceptable": [
+        "hg3",
+        "hh2",
+        "hh3",
+        "hg2"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.207,
+          "simulations": 18944,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.586,
+          "simulations": 19328,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.716,
+          "simulations": 19328,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.57,
+          "simulations": 18944,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.649,
+          "simulations": 19072,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "tzr1w5",
+      "ply": 28,
+      "expected": "h3",
+      "acceptable": [
+        "h3"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.315,
+          "simulations": 75776,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.109,
+          "simulations": 76160,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.135,
+          "simulations": 73856,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.088,
+          "simulations": 70144,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 1.085,
+          "simulations": 74624,
+          "depth": 2,
+          "override": false,
+          "fallback": false
+        }
+      ]
+    },
+    {
+      "code": "benchmark-blue-2673606728",
+      "ply": 20,
+      "expected": "hg4",
+      "acceptable": [
+        "hg4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.767,
+          "simulations": 73984,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.616,
+          "simulations": 72192,
+          "depth": 3,
+          "override": false,
+          "fallback": false
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.771,
+          "simulations": 71552,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.504,
+          "simulations": 74112,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.673,
+          "simulations": 74880,
+          "depth": 3,
+          "override": true,
+          "fallback": false
+        }
+      ]
+    }
+  ]
+}
