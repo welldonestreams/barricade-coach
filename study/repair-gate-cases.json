@@ -513,5 +513,37 @@
       "hf6"
     ],
     "evidence": "completed wider depth-3 check found a delayed defensive wall after depth 2 stopped on c7"
+  },
+  {
+    "code": "j1hhw9",
+    "ply": 22,
+    "history": [
+      "e2",
+      "e8",
+      "e3",
+      "e7",
+      "e4",
+      "e6",
+      "he3",
+      "hd6",
+      "hc3",
+      "hf6",
+      "ha3",
+      "hb6",
+      "ve5",
+      "vd5",
+      "vf4",
+      "hh6",
+      "va7",
+      "e5",
+      "d4",
+      "e4",
+      "c4"
+    ],
+    "best": "vb4",
+    "acceptable": [
+      "vb4"
+    ],
+    "evidence": "completed selective depth-3 and depth-4 checks rejected the shallow f4 pawn stop by 200 and 100 heuristic points"
   }
 ]

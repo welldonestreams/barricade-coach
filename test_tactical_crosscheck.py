@@ -168,6 +168,19 @@ class TacticalCrosscheckTests(unittest.TestCase):
         self.assertIn(result['scored'][0][1],{'hf3','hf4','hf5','hf6'})
         self.assertEqual(result['tactical_override']['mcts_top'],'c7')
 
+    def test_behind_in_race_searches_past_shallow_pawn_for_defensive_wall(self):
+        game=json.loads(Path('study/archive/j1hhw9.json').read_text())
+        hist=game['historyCsv'].split(',')[:21]
+        position=c.Game(hist)
+        self.assertGreater(position.race_distance(c.BLUE),
+                           position.race_distance(c.RED))
+        with patch.object(mcts_coach,'search',return_value=mcts('f4')):
+            result=advice.advise(hist,engine='mcts',seconds=4)
+        self.assertEqual(result['crosscheck_depth'],3)
+        self.assertFalse(result['crosscheck_stopped_on_decisive_pawn'])
+        self.assertEqual(result['scored'][0][1],'vb4')
+        self.assertEqual(result['tactical_override']['mcts_top'],'f4')
+
     def test_benchmark_calls_live_decision_path(self):
         with patch.object(live_coach, 'query', return_value=dict(top=[(0,'e2')])) as query:
             move,_=benchmark_match.coach_move([], c.RED, 4)

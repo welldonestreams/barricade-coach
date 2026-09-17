@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barricade Live Coach
 // @namespace    welldonestreams
-// @version      1.6.0
+// @version      1.7.0
 // @description  Verified board advice, visible highlights and factual explanations
 // @match        https://barricade.gg/*
 // @grant        GM_getValue
@@ -55,8 +55,18 @@
     const analysis=text.match(/[?&]game=([A-Za-z0-9_-]{3,32})(?:[&#]|$)/);
     return analysis?analysis[1]:'';
   }
+  function thinkSeconds(snapshot) {
+    const plies=snapshot.h ? snapshot.h.split(',').filter(Boolean).length : 0;
+    const redLeft=Number(snapshot.red_left), blueLeft=Number(snapshot.blue_left);
+    const remaining=redLeft+blueLeft;
+    // Keep ordinary turns responsive, then spend the user's available clock
+    // where wall tactics and forced routes make shallow advice least reliable.
+    if(plies>=30 || remaining<=6 || redLeft===0 || blueLeft===0) return 15;
+    if(plies>=16 || remaining<=14) return 10;
+    return 6;
+  }
   if (typeof module!=='undefined' && module.exports) {
-    module.exports={parseRows,positionKey,rectForMove,responseMatches,shareCode}; return;
+    module.exports={parseRows,positionKey,rectForMove,responseMatches,shareCode,thinkSeconds}; return;
   }
   let COACH=null;
   const mine=n=>/^steak/i.test(n)||[GM_getValue('bc_me','steak2222'),...GM_getValue('bc_alts','').split(',')].some(m=>m.toLowerCase()===n.toLowerCase());
@@ -68,7 +78,7 @@
   const cache=new Map();
   const panel=document.createElement('div'); panel.id='bc-coach';
   panel.style.cssText='position:fixed;right:16px;top:16px;z-index:2147483000;background:#111827f5;color:#f9fafb;border:1px solid #64748b;border-radius:12px;padding:12px;max-width:350px;font:14px system-ui;box-shadow:0 4px 20px #0008';
-  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.6</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
+  panel.innerHTML='<div style="display:flex;gap:6px;align-items:center"><strong>Coach 1.7</strong><button id="bc-red">Red</button><button id="bc-blue">Blue</button><button id="bc-on">Pause</button></div><div id="bc-move" style="font-size:21px;color:#6ee7b7;margin-top:8px">Reading board…</div><div id="bc-status" style="font-size:12px;margin:6px 0"></div><div id="bc-why" style="font-size:13px;line-height:1.5"></div><div id="bc-opp" style="font-size:12px;color:#cbd5e1;margin-top:8px"></div>';
   document.body.appendChild(panel);
   const el=id=>panel.querySelector('#bc-'+id);
   function clear() { highlights.forEach(e=>e.remove()); highlights=[]; }
@@ -258,9 +268,9 @@
   function ask(snapshot) {
     const key=gameId+'|'+opponent+'|'+positionKey(snapshot);
     if(cache.has(key)) {present(cache.get(key),snapshot);return;}
-    const id=String(++generation);
-    const params=new URLSearchParams({...snapshot,grid:'',root:'',opponent,game_id:gameId,seconds:'4',request_id:id,walls:snapshot.walls.join(',')});
-    el('status').textContent='Thinking…';
+    const id=String(++generation), seconds=thinkSeconds(snapshot);
+    const params=new URLSearchParams({...snapshot,grid:'',root:'',opponent,game_id:gameId,seconds:String(seconds),request_id:id,walls:snapshot.walls.join(',')});
+    el('status').textContent=`Thinking… (up to ${seconds}s)`;
     request=GM_xmlhttpRequest({method:'GET',url:COACH+'/api/live?'+params,timeout:20000,
       onload(res) {
         if(String(generation)!==id)return;request=null;

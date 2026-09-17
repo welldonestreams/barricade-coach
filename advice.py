@@ -157,9 +157,18 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         mm=c.search(hist,side,depth=2,time_limit=seconds)
         mm['selective']=False
     else:
+        # The depth-2 pawn shortcut is safe when our route is already at least
+        # as fast as the opponent's: it preserves tempo and avoids spending a
+        # wall merely because a selective deeper pass ties (52s6kd ply 16).
+        # When we are behind in the race, however, a delayed defensive wall can
+        # be the only way back. j1hhw9 ply 22 was 9 steps versus 7; stopping at
+        # depth 2 chose f4, while completed depth 3/4 found vb4 decisively best.
+        preserve_pawn=(TACTICAL_GAP_CP
+                       if game.race_distance(side)<=game.race_distance(1-side)
+                       else None)
         mm = c.candidate_search(hist, side, depth=3, time_limit=seconds,
                                 beam=8,root_moves=mcts_moves,
-                                preserve_depth2_pawn_margin=TACTICAL_GAP_CP)
+                                preserve_depth2_pawn_margin=preserve_pawn)
         # A complete depth-2 pass can say "advance the pawn" while disagreeing
         # with MCTS about which pawn move, then stop before seeing a delayed
         # defensive wall. That exact pattern lost coverage at 4wpcv0 ply 26.
