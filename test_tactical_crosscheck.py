@@ -15,10 +15,36 @@ import regress_losses
 CASES = json.loads(Path(__file__).with_name('study').joinpath('tactical-loss-cases.json').read_text())
 RECENT = json.loads(Path(__file__).with_name('study').joinpath('recent-loss-cases.json').read_text())
 
+# j1hhw9 (tbar vs steak2222, 2026-09-17) was nine steps to seven at ply 22 with
+# blue to move. The first 21 plies come from the public game record; the
+# position is inlined because study/archive/ is gitignored and a fresh clone
+# (the CI checkout) has no archive to read.
+J1HHW9_PLIES_21 = ('e2,e8,e3,e7,e4,e6,he3,hd6,hc3,hf6,ha3,hb6,ve5,vd5,vf4,hh6,'
+                   'va7,e5,d4,e4,c4').split(',')
+
+# The selective searches are deadline-bounded, so an assertion on how deep they
+# got is really an assertion about the machine: GitHub's shared runners cannot
+# always finish the same depth inside the live budgets (3s shallow, 8s
+# escalated), which turned this module red on four separate CI runs for
+# decisions the engine still gets right. Run the real search with a patient
+# clock and assert the production budgets separately from the outcome.
+PATIENT_SECONDS = 60.0
+
 
 def mcts(move, **extra):
     return dict(scored=[(-60000, move)], principal_variation=[move],
                 fallback=False, depth=None, simulations=60000, **extra)
+
+
+def patient_candidate_search(calls):
+    """Record the requested production budget, then run without the deadline."""
+    real = c.candidate_search
+
+    def search(*args, **kwargs):
+        calls.append(dict(kwargs))
+        return real(*args, **dict(kwargs, time_limit=PATIENT_SECONDS))
+
+    return search
 
 
 class TacticalCrosscheckTests(unittest.TestCase):
@@ -162,20 +188,34 @@ class TacticalCrosscheckTests(unittest.TestCase):
 
     def test_ambiguous_pawn_stop_expands_for_delayed_wall(self):
         hist='he8,d9,hc8,he1,f1,hg1,g1,vh1,f1,vf8,e1,c9,d1,b9,d2,b8,va6,ha8,d3,hg7,e3,hh8,f3,b7,g3'.split(',')
-        with patch.object(mcts_coach,'search',return_value=mcts('c7')):
+        calls=[]
+        with patch.object(mcts_coach,'search',return_value=mcts('c7')), \
+             patch.object(c,'candidate_search',
+                          side_effect=patient_candidate_search(calls)):
             result=advice.advise(hist,engine='mcts',seconds=4)
+        self.assertEqual([call['time_limit'] for call in calls],[3.0,8.0])
+        self.assertEqual([call['beam'] for call in calls],[8,20])
         self.assertTrue(result.get('crosscheck_expanded'))
         self.assertIn(result['scored'][0][1],{'hf3','hf4','hf5','hf6'})
         self.assertEqual(result['tactical_override']['mcts_top'],'c7')
 
     def test_behind_in_race_searches_past_shallow_pawn_for_defensive_wall(self):
-        game=json.loads(Path('study/archive/j1hhw9.json').read_text())
-        hist=game['historyCsv'].split(',')[:21]
+        hist=list(J1HHW9_PLIES_21)
         position=c.Game(hist)
         self.assertGreater(position.race_distance(c.BLUE),
                            position.race_distance(c.RED))
-        with patch.object(mcts_coach,'search',return_value=mcts('f4')):
+        calls=[]
+        with patch.object(mcts_coach,'search',return_value=mcts('f4')), \
+             patch.object(c,'candidate_search',
+                          side_effect=patient_candidate_search(calls)):
             result=advice.advise(hist,engine='mcts',seconds=4)
+        # Behind in the race the depth-2 pawn shortcut is dropped, so the
+        # selective pass must run without the pawn-preserving margin and is
+        # allowed to complete depth three instead of stopping on the pawn move.
+        self.assertEqual(calls[0]['depth'],3)
+        self.assertEqual(calls[0]['time_limit'],3.0)
+        self.assertIsNone(calls[0]['preserve_depth2_pawn_margin'])
+        self.assertEqual(list(calls[0]['root_moves']),['f4'])
         self.assertEqual(result['crosscheck_depth'],3)
         self.assertFalse(result['crosscheck_stopped_on_decisive_pawn'])
         self.assertEqual(result['scored'][0][1],'vb4')
