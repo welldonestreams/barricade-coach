@@ -307,6 +307,21 @@ class PolicyValueTests(unittest.TestCase):
         self.assertFalse(rows[0]['correct'])
         self.assertEqual(rows[0]['guided_ok'], 0)
 
+    def test_live_repair_check_uses_adaptive_production_clock(self):
+        seen=[]
+        def fake_advise(hist, side, seconds, **kw):
+            seen.append(seconds)
+            return dict(scored=[(-1,'e8')],simulations=1,elapsed=.01,
+                        fallback=False,timed_out=False)
+        case=dict(code='adaptive',ply=2,history=['e2'],best='e8',acceptable=['e8'])
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(arena.advice,'advise',side_effect=fake_advise):
+            path=Path(tmp)/'case.json'
+            path.write_text(json.dumps([case]),encoding='utf-8')
+            rows=arena.live_repair_check(False,[path],seeds=(1,))
+        self.assertEqual(seen,[6.0,6.0])
+        self.assertEqual(rows[0]['seconds'],6.0)
+
     def test_production_root_priors_keep_an_exploration_floor(self):
         import mcts_coach
         legal=['e2','d1','f1','ha1']

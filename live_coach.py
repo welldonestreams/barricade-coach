@@ -9,6 +9,16 @@ from pathlib import Path
 
 BUILD = hashlib.sha256(b"".join(Path(__file__).with_name(n).read_bytes() for n in ("coach.py", "advice.py", "mcts_coach.py", "policy_value.py", "endgame.py", "live_coach.py"))).hexdigest()[:12]
 
+
+def production_seconds(g):
+    """The live overlay's adaptive move clock, shared with promotion tests."""
+    remaining=sum(g.remaining.values())
+    if len(g.history)>=30 or remaining<=6 or 0 in g.remaining.values():
+        return 15.0
+    if len(g.history)>=16 or remaining<=14:
+        return 10.0
+    return 6.0
+
 def trace(params, payload):
     """Bounded local audit trail; never sends game history to an external service."""
     try:

@@ -10,8 +10,8 @@ Two-part repair gate (2026-09-08):
    candidate -- so the screen measures model signal, not candidate admission.
 2. LIVE CHECK (production path): every repair position is run through the
    exact call the live coach makes -- ``advice.advise(engine='mcts', ...)``
-   with the candidate as ``policy_model``, the production four-second MCTS
-   search followed by its bounded adaptive tactical check, and five fixed seeds. The final
+   with the candidate as ``policy_model``, the same adaptive 6/10/15-second
+   clock as the overlay, followed by its bounded tactical check, and five fixed seeds. The final
    recommendation must be acceptable on EVERY run with no decision failure and
    no illegal move. The same positions are run unguided (``policy_model=False``)
    at the same budget: the candidate must not reduce repair reliability
@@ -44,6 +44,7 @@ import advice
 import coach as c
 import policy_value as pv
 import repair_gate
+import live_coach
 
 ROOT = Path(__file__).resolve().parent
 
@@ -58,7 +59,7 @@ GATE_CASES = repair_gate.CASES
 # corrected candidate was evaluated; do not tune to admit a candidate).
 RAW_TOP_K = 10          # acceptable move must rank within top-10, OR
 RAW_MIN_MASS = 0.05     # acceptable set carries >=5% of prior mass.
-REPAIR_SECONDS = 4.0    # live_coach.query default budget (production path).
+REPAIR_SECONDS = None   # use the overlay's adaptive production clock per case.
 REPAIR_SEEDS = (2026090701, 2026090702, 2026090703, 2026090704, 2026090705)
 
 
@@ -241,13 +242,14 @@ def live_repair_check(model, paths, seconds=REPAIR_SECONDS, seeds=REPAIR_SEEDS,
     tasks = []
     for case, game, legal, acceptable in cases:
         hist = game.history
+        case_seconds=live_coach.production_seconds(game) if seconds is None else seconds
         for seed in seeds:
             for guided in (True, False):
                 # False explicitly disables priors. None means "load the live
                 # champion" in advice.advise and would contaminate the frozen
                 # unguided baseline after the first successful promotion.
                 tasks.append((case, hist, game.to_move, legal, acceptable,
-                              seed, seconds, model if guided else False, guided))
+                              seed, case_seconds, model if guided else False, guided))
     records = {}
 
     def run(task):
@@ -271,8 +273,10 @@ def live_repair_check(model, paths, seconds=REPAIR_SECONDS, seeds=REPAIR_SEEDS,
         # fallback, and no illegal move (each of those marks ok=False).
         parity = guided_ok >= unguided_ok
         correct = guided_ok == len(seeds) and parity
+        case_seconds=live_coach.production_seconds(game) if seconds is None else seconds
         rows.append(dict(code=code, ply=ply, expected=case['best'],
                          acceptable=acceptable, correct=correct,
+                         seconds=case_seconds,
                          guided_ok=guided_ok, unguided_ok=unguided_ok,
                          parity_ok=parity,
                          runs=[dict(seed=seed,
@@ -350,7 +354,7 @@ def main():
     # set (see GATE_CASES above for the full rationale).
     ap.add_argument('--regression', nargs='*', default=[GATE_CASES])
     ap.add_argument('--repair-seconds', type=float, default=REPAIR_SECONDS,
-                    help='time budget for the live repair check (production default)')
+                    help='fixed live-repair budget; omit for adaptive production 6/10/15s')
     ap.add_argument('--repair-workers', type=int, default=1,
                     help='concurrent live checks; keep 1 because each decision uses 4 Node workers')
     # Measurement mode: run the live repair check even when the raw screen
@@ -376,7 +380,8 @@ def main():
                          live_correct=sum(row['correct'] for row in live) if live else 0,
                          live_parity_ok=parity_ok,
                          live=live or [],
-                         repair_seconds=args.repair_seconds,
+                         repair_seconds=(args.repair_seconds if args.repair_seconds is not None
+                                         else 'adaptive-production'),
                          repair_seeds=list(REPAIR_SEEDS))
     if not gate_ok:
         reasons = []

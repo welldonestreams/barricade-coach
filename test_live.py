@@ -68,6 +68,17 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(d['search']['simulations'],12)
         self.assertTrue(d['search']['early'])
 
+    def test_production_clock_matches_overlay_time_bands(self):
+        self.assertEqual(live_coach.production_seconds(c.Game()),6)
+        hist=json.loads((ROOT/'study/additional/5s2skz.json').read_text(
+            encoding='utf-8'))['historyCsv'].split(',')
+        mid=c.Game(hist[:16])
+        self.assertEqual(len(mid.history),16)
+        self.assertEqual(live_coach.production_seconds(mid),10)
+        late=c.Game(hist[:30])
+        self.assertEqual(len(late.history),30)
+        self.assertEqual(live_coach.production_seconds(late),15)
+
     def test_live_rejects_invalid_seed_and_opening_budget(self):
         p=live_coach.position(c.Game());params={**p,'walls':'','h':''}
         for extra in ({'seed':'bad'},{'seed':'-1'},{'opening_seconds':'0'},

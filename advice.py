@@ -173,8 +173,9 @@ def _tactical_crosscheck(hist, side, mcts_result, seconds):
         # with MCTS about which pawn move, then stop before seeing a delayed
         # defensive wall. That exact pattern lost coverage at 4wpcv0 ply 26.
         # Escalate only this ambiguous case; routine positions keep the normal
-        # 2-3 second check. The expanded pass still completes below the
-        # overlay's 18-second response deadline after the four-second MCTS run.
+        # 2-3 second check. The expanded pass is reserved for this measured
+        # ambiguity; the overlay gives tactical and late positions a longer
+        # production clock than the old fixed four-second request.
         shallow={move:score for score,move in mm.get('scored',[])}
         shallow_best=mm.get('scored',[()])[0] if mm.get('scored') else ()
         if (mm.get('stopped_on_decisive_pawn') and len(mcts_top)==2

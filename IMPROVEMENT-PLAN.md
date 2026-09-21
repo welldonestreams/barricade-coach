@@ -64,7 +64,7 @@ models on held-out data before choosing model complexity.
 Integrate the candidate into MCTS to guide exploration and evaluate leaves;
 preserve legality checks and tactical proofs. Benchmark the whole search, not
 just prediction accuracy. A model that fits records better can still play worse.
-Train offline; keep live inference small enough for the four-second search budget.
+Train offline; keep live inference small enough for the adaptive 6/10/15-second production search clock.
 
 Search plus a model predicting moves and outcomes is an established approach in
 [AlphaGo Zero](https://deepmind.google/blog/alphago-zero-starting-from-scratch/).
