@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>Coach overlay regression board</title>
+<style>
+body{background:#171717;color:#eee;font:16px system-ui;margin:20px}.board{display:grid;width:600px;height:600px;grid-template-columns:repeat(19,1fr);grid-template-rows:repeat(19,1fr);position:relative;margin:30px}.border.flex{border:1px solid #777;background:#333;display:flex;align-items:center;justify-content:center;width:50px;height:50px}.bg-red-500{background:#ef4444}.bg-blue-500{background:#3b82f6}.pawn{width:26px;height:26px;border-radius:50%}.badge{width:20px;height:8px}.card{padding:5px}.moves{max-width:350px}button{padding:8px}
+</style>
+<h2>Local overlay regression board</h2><p>This reproduces the screenshot position. No game is being played.</p>
+<button onclick="rotate()">Rotate board</button><button onclick="advance()">Play confirmed e4</button><button onclick="reset()">Reset screenshot</button>
+<div class="card"><a href="/user/cartizw">cartizw</a> (1208)<div class="badge bg-red-500"></div><span>10/10</span></div>
+<div class="card"><a href="/user/steak2222">steak2222</a> (1307)<div class="badge bg-blue-500"></div><span>10/10</span></div>
+<div class="board" data-tutorial="board"></div><div class="moves">1.e2e82.e3e73.e4e64.e5</div>
+<script>
+// GM bridge only for this local fixture. It uses the same server and userscript.
+const settings={};window.GM_getValue=(k,d)=>settings[k]??d;window.GM_setValue=(k,v)=>settings[k]=v;
+window.GM_xmlhttpRequest=o=>{const controller=new AbortController(),timer=setTimeout(()=>{controller.abort();o.ontimeout?.()},o.timeout);fetch(o.url,{signal:controller.signal}).then(async r=>o.onload?.({status:r.status,responseText:await r.text()})).catch(e=>{if(e.name!=='AbortError')o.onerror?.(e)}).finally(()=>clearTimeout(timer));return {abort:()=>{clearTimeout(timer);controller.abort()}}};
+const root=document.querySelector('.board');let flipped=false,blue='e6';
+function render(){root.innerHTML='';root.style.gridTemplateColumns='10px repeat(8,50px 14px) 50px 10px';root.style.gridTemplateRows=root.style.gridTemplateColumns;
+ for(let row=0;row<9;row++)for(let col=0;col<9;col++){const d=document.createElement('div');d.className='border flex';d.style.gridRowStart=String(2+row*2);d.style.gridColumnStart=String(2+col*2);const sq='abcdefghi'[col]+(9-row);if(sq==='e5'||sq===blue){const p=document.createElement('div');p.className='pawn bg-'+(sq==='e5'?'red':'blue')+'-500';d.append(p)}root.append(d)}root.style.transform=flipped?'rotate(180deg)':'none';}
+function rotate(){flipped=!flipped;render()}function advance(){blue='e4';document.querySelector('.moves').textContent='1.e2e82.e3e73.e4e64.e5e4';render()}function reset(){blue='e6';document.querySelector('.moves').textContent='1.e2e82.e3e73.e4e64.e5';render()}render();
+</script><script src="/barricade-live-coach.user.js"></script>

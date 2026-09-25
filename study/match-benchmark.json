@@ -1,0 +1,91 @@
+{
+  "seconds_per_move": 2.0,
+  "games_per_side": 2,
+  "opponents": [
+    "depth=4",
+    "mcts=60000"
+  ],
+  "summary": {
+    "depth=4": {
+      "games": 4,
+      "wins": 4,
+      "losses": 0,
+      "draws": 0,
+      "winrate": 1.0
+    },
+    "mcts=60000": {
+      "games": 4,
+      "wins": 1,
+      "losses": 3,
+      "draws": 0,
+      "winrate": 0.25
+    }
+  },
+  "records": [
+    {
+      "opponent": "depth=4",
+      "opener": "e2,e8",
+      "coach_side": 0,
+      "winner": 0,
+      "coach_won": true,
+      "plies": 75
+    },
+    {
+      "opponent": "depth=4",
+      "opener": "e2,e8",
+      "coach_side": 0,
+      "winner": 0,
+      "coach_won": true,
+      "plies": 19
+    },
+    {
+      "opponent": "depth=4",
+      "opener": "e2,e8",
+      "coach_side": 1,
+      "winner": 1,
+      "coach_won": true,
+      "plies": 26
+    },
+    {
+      "opponent": "depth=4",
+      "opener": "e2,e8",
+      "coach_side": 1,
+      "winner": 1,
+      "coach_won": true,
+      "plies": 22
+    },
+    {
+      "opponent": "mcts=60000",
+      "opener": "e2,e8",
+      "coach_side": 0,
+      "winner": 0,
+      "coach_won": true,
+      "plies": 71
+    },
+    {
+      "opponent": "mcts=60000",
+      "opener": "e2,e8",
+      "coach_side": 0,
+      "winner": 1,
+      "coach_won": false,
+      "plies": 58
+    },
+    {
+      "opponent": "mcts=60000",
+      "opener": "e2,e8",
+      "coach_side": 1,
+      "winner": 0,
+      "coach_won": false,
+      "plies": 59
+    },
+    {
+      "opponent": "mcts=60000",
+      "opener": "e2,e8",
+      "coach_side": 1,
+      "winner": 0,
+      "coach_won": false,
+      "plies": 71
+    }
+  ],
+  "elapsed_s": 558.6
+}

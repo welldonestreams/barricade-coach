@@ -1,0 +1,20 @@
+[
+  {
+    "code": "qm1cd6",
+    "ply": 20,
+    "history": ["e2","e8","e3","e7","e4","e6","hd3","hd6","hf3","hf6","hb3","hb6","va4","hh7","hh3","ha7","vd5","hf7","hd4"],
+    "mcts_move": "e5",
+    "best": "f6",
+    "gap": 200.0,
+    "proven": false
+  },
+  {
+    "code": "xc2vpz",
+    "ply": 37,
+    "history": ["e2","e8","e3","e7","e4","e6","e5","e4","e6","he6","hd3","he4","ve3","hc4","hb3","ha4","ha1","vc2","d6","hc6","e6","d4","d6","c4","c6","vb5","d6","b4","e6","a4","f6","vf6","f5","a3","g5","hg5"],
+    "mcts_move": "h5",
+    "best": "hg4",
+    "gap": 88.0,
+    "proven": false
+  }
+]

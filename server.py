@@ -1,21 +1,234 @@
 #!/usr/bin/env python3
 """barricade-coach local web server.
-Usage: python3 server.py  ->  http://127.0.0.1:8807
+Usage: python3 server.py  ->  http://127.0.0.1:8810
 """
 import json
 import os
+import random
 import sys
+import threading
+import time
+import socket
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import coach as c
+try:
+    import learning
+    LEARNING_OK = True
+except Exception:
+    LEARNING_OK = False
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(ROOT, 'ui', 'index.html')
+SEARCH_LOCK = threading.BoundedSemaphore(1)
+OPPONENT_JOBS = set()
+OPPONENT_LOCK = threading.Lock()
+GAME_SYNC_JOBS = set()
+GAME_SYNC_LOCK = threading.Lock()
+
+class LocalServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR can let two processes serve the same loopback port.
+    allow_reuse_address = os.name != 'nt'
+    def server_bind(self):
+        if os.name == 'nt':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+@lru_cache(maxsize=1)
+def read_book(modified):
+    with open(os.path.join(ROOT,'study','opening-book.json'),encoding='utf-8') as f:
+        return json.load(f)
+
+def opening_reference(history):
+    path=os.path.join(ROOT,'study','opening-book.json')
+    try:
+        book=read_book(os.stat(path).st_mtime_ns)
+        return dict(source_games=book['source_games'],moves=book['positions'].get(','.join(history),[]))
+    except (OSError,ValueError,KeyError,TypeError):
+        return dict(source_games=0,moves=[])
 
 def parse_move(h):
-    return [m for m in (h or '').split(',') if m]
+    if len(h) > 8000:
+        raise ValueError('History too long (maximum 8000 characters)')
+    return c.parse_history(h)
+
+def json_or(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def archive_finished_game(sharecode, history_csv, winner, red, blue,
+                          refresh=True):
+    """Persist a completed overlay game, then refresh it from the public API.
+
+    The immediate local snapshot closes the gap between live advice logging and
+    periodic profile harvesting. The background refresh replaces that minimal
+    snapshot with Barricade's authoritative record when it becomes available.
+    """
+    if (not isinstance(sharecode,str) or not 3<=len(sharecode)<=32
+            or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in sharecode)):
+        raise ValueError('Invalid game share code')
+    history=c.Game(c.parse_history(history_csv)).history
+    if winner not in ('red','blue'):
+        raise ValueError('Finished game winner must be red or blue')
+    archive=os.path.join(ROOT,'study','archive');os.makedirs(archive,exist_ok=True)
+    path=os.path.join(archive,sharecode+'.json')
+    try:
+        with open(path,encoding='utf-8') as f:existing=json.load(f)
+        if (existing.get('shareCode')==sharecode
+                and c.Game(c.parse_history(existing.get('historyCsv',''))).history==history
+                and existing.get('source')!='live-overlay'):
+            return path
+    except (OSError,ValueError,TypeError):pass
+    snapshot=dict(shareCode=sharecode,historyCsv=','.join(history),
+                  player1Username=red,player2Username=blue,
+                  winner='1' if winner=='red' else '2',source='live-overlay',
+                  recordedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()))
+    temp=path+f'.{threading.get_ident()}.tmp'
+    with open(temp,'w',encoding='utf-8') as f:json.dump(snapshot,f,indent=2)
+    os.replace(temp,path)
+    if refresh:
+        def fetch():
+            try:
+                import collect_games
+                data=collect_games.get('/games/'+sharecode)
+                if (data.get('shareCode')!=sharecode or
+                        c.Game(c.parse_history(data.get('historyCsv',''))).history!=history):
+                    return
+                with open(temp,'w',encoding='utf-8') as f:json.dump(data,f,indent=2)
+                os.replace(temp,path)
+            except Exception:
+                try:
+                    if os.path.exists(temp):os.unlink(temp)
+                except OSError:pass
+        threading.Thread(target=fetch,daemon=True).start()
+    return path
+
+
+def game_share_code(value):
+    """Extract a validated share code from the overlay's path/query value."""
+    text=str(value or '')
+    parsed=urlparse(text)
+    code=''
+    if parsed.path.startswith('/game/'):
+        code=parsed.path.split('/',2)[2]
+    elif parsed.path=='/analysis':
+        code=parse_qs(parsed.query).get('game',[''])[0]
+    if (not 3<=len(code)<=32 or
+            any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in code)):
+        return ''
+    return code
+
+
+def sync_finished_game(code):
+    """Fetch and archive one completed public game; return True when finished."""
+    import collect_games
+    data=collect_games.get('/games/'+code)
+    if data.get('shareCode')!=code:
+        raise ValueError('Public game code mismatch')
+    history=c.Game(c.parse_history(data.get('historyCsv',''))).history
+    winner={'1':'red','2':'blue',1:'red',2:'blue'}.get(data.get('winner'))
+    if not data.get('finishedAt') and winner is None:
+        return False
+    if winner is None:
+        return False
+    archive=os.path.join(ROOT,'study','archive');os.makedirs(archive,exist_ok=True)
+    path=os.path.join(archive,code+'.json')
+    temp=path+f'.{threading.get_ident()}.tmp'
+    with open(temp,'w',encoding='utf-8') as f:json.dump(data,f,indent=2)
+    os.replace(temp,path)
+    if LEARNING_OK:
+        learning.record_game(','.join(history),winner,
+                             red_name=data.get('player1Username'),
+                             blue_name=data.get('player2Username'),sharecode=code)
+    return True
+
+
+def schedule_game_sync(game_id, interval=20, attempts=60):
+    """Poll an active public game in the background until its final record exists."""
+    code=game_share_code(game_id)
+    if not code:return False
+    with GAME_SYNC_LOCK:
+        if code in GAME_SYNC_JOBS:return False
+        GAME_SYNC_JOBS.add(code)
+    def run():
+        try:
+            for _ in range(attempts):
+                try:
+                    if sync_finished_game(code):return
+                except Exception:
+                    pass
+                time.sleep(interval)
+        finally:
+            with GAME_SYNC_LOCK:GAME_SYNC_JOBS.discard(code)
+    threading.Thread(target=run,daemon=True).start()
+    return True
+
+
+# On-demand opponent collection: build a player's model from games already in the
+# archive (the harvest owns bulk download), with a small capped fresh-download
+# fallback for brand-new opponents. Never writes collection-summary.json.
+
+def fetch_opponent_model(name, max_fresh=40):
+    """Build `name`'s tendency model. Sources, in order:
+      1. games already in study/archive/ that feature this player (fast, local)
+      2. if none, download up to max_fresh of their recent games (jittered)
+    Returns the model dict, or None if no games are available."""
+    import collect_games
+    archive_dir = os.path.join(ROOT, 'study', 'archive')
+    os.makedirs(archive_dir, exist_ok=True)
+
+    records = []
+    for fn in os.listdir(archive_dir):
+        if not fn.endswith('.json'):
+            continue
+        path = os.path.join(archive_dir, fn)
+        try:
+            with open(path, encoding='utf-8') as f:
+                d = json.load(f)
+        except (ValueError, OSError):
+            continue
+        if d.get('player1Username') == name or d.get('player2Username') == name:
+            records.append(d)
+
+    if not records and max_fresh > 0:
+        # Brand-new opponent: download a bounded batch of recent games.
+        try:
+            data = collect_games.get(f'/api/users/{name}/games?page=1&limit=100')
+            for g in (data.get('games') or [])[:max_fresh]:
+                code = g.get('shareCode')
+                if not code:
+                    continue
+                path = os.path.join(archive_dir, f'{code}.json')
+                if os.path.exists(path):
+                    try:
+                        records.append(json.load(open(path, encoding='utf-8')))
+                    except (ValueError, OSError):
+                        pass
+                    continue
+                try:
+                    d = collect_games.get('/games/' + code)
+                    tmp = path + '.tmp'
+                    with open(tmp, 'w', encoding='utf-8') as f:
+                        json.dump(d, f)
+                    os.replace(tmp, path)
+                    records.append(d)
+                    time.sleep(random.uniform(1.5, 3.0))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if not records:
+        return None
+    model = learning.build_opponent_model(name, records)
+    learning.save_opponent(name, model)
+    return model
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # silence
@@ -26,18 +239,80 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(data)))
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
+        allowed = {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
+        if self.headers.get('Host') not in allowed:
+            self._send(403, {'error': 'Local access only'})
+            return
+        origin = self.headers.get('Origin')
+        if origin and origin not in {f'http://{h}' for h in allowed}:
+            self._send(403, {'error': 'Same-origin access only'})
+            return
         u = urlparse(self.path)
-        if u.path == '/api/move':
-            q = parse_qs(u.query)
-            hist = parse_move(q.get('h', [''])[0])
-            side_s = q.get('side', [''])[0].lower()
-            side = c.RED if side_s.startswith('r') else (c.BLUE if side_s.startswith('b') else None)
+        if u.path == '/api/health':
+            self._send(200, {'service': 'barricade-coach', 'protocol': 2, 'live_protocol': 7})
+            return
+        if u.path == '/overlay-fixture':
+            with open(os.path.join(ROOT, 'overlay', 'fixture.html'), 'rb') as f:
+                self._send(200, f.read(), 'text/html; charset=utf-8')
+            return
+        if u.path == '/barricade-live-coach.user.js':
+            with open(os.path.join(ROOT, 'overlay', 'barricade-live-coach.user.js'), 'rb') as f:
+                self._send(200, f.read(), 'text/javascript; charset=utf-8')
+            return
+        if u.path == '/api/live':
+            if not SEARCH_LOCK.acquire(blocking=False):
+                self._send(429, {'error': 'Coach busy; retry shortly'})
+                return
             try:
+                import live_coach
+                params={k:v[0] for k,v in parse_qs(u.query, keep_blank_values=True).items()}
+                result = live_coach.query(params)
+                schedule_game_sync(params.get('game_id'))
+                self._send(200, result)
+            except (ValueError, TypeError) as exc:
+                self._send(400, {'error': str(exc)})
+            finally:
+                SEARCH_LOCK.release()
+            return
+        if u.path == '/api/legal':
+            q = parse_qs(u.query)
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                g = c.Game(hist)
+                walls_left = {'red': g.remaining[c.RED], 'blue': g.remaining[c.BLUE]}
+                if g.winner is not None:
+                    self._send(200, {'to_move': 'red' if g.to_move == c.RED else 'blue',
+                                     'legal_pawn': [], 'legal_walls': [], 'walls_left': walls_left,
+                                     'winner': ('red' if g.winner == c.RED else 'blue')})
+                    return
+                pawn_dests = []
+                for _, p in g.pawn_moves(g.to_move):
+                    pawn_dests.append(c.LETTERS[p[0]] + str(p[1] + 1))
+                self._send(200, {
+                    'to_move': 'red' if g.to_move == c.RED else 'blue',
+                    'pawn_origin': c.LETTERS[g.pawns[g.to_move][0]] + str(g.pawns[g.to_move][1] + 1),
+                    'legal_pawn': sorted(set(pawn_dests)),
+                    'legal_walls': g.legal_walls(),
+                    'walls_left': walls_left,
+                    'winner': None,
+                })
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e), 'legal_history': False})
+            return
+        if u.path in ('/api/move', '/api/state'):
+            q = parse_qs(u.query)
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                side_s = q.get('side', [''])[0].lower()
+                if side_s not in ('', 'red', 'blue'):
+                    raise ValueError('Side must be red or blue')
+                side = {'red': c.RED, 'blue': c.BLUE}.get(side_s)
                 g = c.Game(hist)
                 to_move = g.to_move
                 if side is None:
@@ -46,20 +321,228 @@ class Handler(BaseHTTPRequestHandler):
                     'red': c.shortest(g.walls, g.pawns[c.RED], c.GOALS[c.RED]),
                     'blue': c.shortest(g.walls, g.pawns[c.BLUE], c.GOALS[c.BLUE]),
                 }
-                scored = c.best_moves(hist, side, n=0)[1]
+                result = None
+                if side != to_move:
+                    raise ValueError('Requested side is not on move')
+                if u.path == '/api/move':
+                    depth = int(q.get('depth', ['2'])[0])
+                    seconds = float(q.get('seconds', ['5'])[0])
+                    if not 1 <= depth <= 6 or not 0 < seconds <= 15:
+                        raise ValueError('Use depth 1-6 and seconds greater than 0, at most 15')
+                    if not SEARCH_LOCK.acquire(blocking=False):
+                        self._send(429, {'error': 'Coach is busy; try again shortly'})
+                        return
+                    try:
+                        engine = q.get('engine', ['python'])[0]
+                        opp_name = q.get('opponent', [''])[0] or None
+                        opp_color = q.get('color', [''])[0].lower()
+                        if opp_color not in ('red', 'blue'):
+                            opp_color = None
+                        # Blend learned memory when a learning module is present;
+                        # otherwise fall back to pure tactical search.
+                        if LEARNING_OK and engine in ('python', 'mcts'):
+                            import advice
+                            result = advice.advise(hist, side, depth, seconds,
+                                                   engine=engine,
+                                                   opp_name=opp_name, opp_color=opp_color)
+                        elif engine == 'mcts':
+                            import mcts_coach
+                            result = mcts_coach.search(hist, side, seconds)
+                        elif engine == 'python':
+                            result = c.search(hist, side, depth, seconds)
+                            result['engine'] = 'python'
+                        else:
+                            raise ValueError('Engine must be python or mcts')
+                    finally:
+                        SEARCH_LOCK.release()
+                scored = result['scored'] if result else []
                 top = [[s, m] for s, m in scored[:5]]
                 self._send(200, {
                     'to_move': 'red' if to_move == c.RED else 'blue',
                     'requested_side': 'red' if side == c.RED else 'blue',
                     'top': top,
+                    'history': g.history,
+                    'opening_reference': opening_reference(g.history),
+                    'winner': None if g.winner is None else ('red' if g.winner == c.RED else 'blue'),
+                    'remaining': {'red': g.remaining[c.RED], 'blue': g.remaining[c.BLUE]},
+                    'search': None if result is None else {k: v for k, v in result.items() if k not in ('scored', 'winner')},
                     'sp': sp,
                     'walls': sorted(g.walls),
                     'pawns': {'red': c.LETTERS[g.pawns[c.RED][0]] + str(g.pawns[c.RED][1] + 1),
                               'blue': c.LETTERS[g.pawns[c.BLUE][0]] + str(g.pawns[c.BLUE][1] + 1)},
                     'legal_history': True,
+                    'blend': (result.get('blend') or [])[:5] if result else [],
                 })
-            except Exception as e:
+            except (ValueError, TypeError) as e:
                 self._send(400, {'error': str(e), 'legal_history': False})
+            return
+        if u.path == '/api/opponent/fetch':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            name = q.get('name', [''])[0]
+            if not name or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in name):
+                self._send(400, {'error': 'Provide ?name=<username>'})
+                return
+            model = learning.load_opponent(name)
+            if model and model.get('format') == 3:
+                self._send(200, {'name': name, 'status': 'ready', 'games': model.get('games')})
+                return
+            with OPPONENT_LOCK:
+                if name not in OPPONENT_JOBS:
+                    OPPONENT_JOBS.add(name)
+                    def build(name=name):
+                        try:
+                            fetch_opponent_model(name, max_fresh=10)
+                        finally:
+                            with OPPONENT_LOCK:
+                                OPPONENT_JOBS.discard(name)
+                    threading.Thread(target=build, daemon=True).start()
+            self._send(202, {'name': name, 'status': 'building'})
+            return
+        if u.path == '/api/opponent':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            name = q.get('name', [''])[0]
+            if not name or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in name):
+                self._send(400, {'error': 'Provide ?name=<username>'})
+                return
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                color = q.get('color', [''])[0].lower()
+                if color not in ('red', 'blue'):
+                    color = None
+                model = learning.load_opponent(name)
+                if not model:
+                    self._send(404, {'error': f'No model for {name} yet - collect their games first', 'name': name})
+                    return
+                insight = learning.opponent_insight(name, hist, opp_color=color)
+                stats = learning.outcome_stats(hist)
+                self._send(200, {'name': name, 'model': {
+                    'games': model.get('games'), 'wins': model.get('wins'),
+                    'rating_low': model.get('rating_low'), 'rating_high': model.get('rating_high'),
+                    'avg_move_ms': model.get('avg_move_ms'),
+                }, 'insight': insight, 'outcome_stats': stats})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/memory':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                s = learning.memory_stats()
+                self._send(200, {'positions': s['positions'],
+                                 'games': s['games'],
+                                 'stats': learning.outcome_stats(hist)})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/record':
+            q = parse_qs(u.query)
+            if not LEARNING_OK:
+                self._send(501, {'error': 'learning module unavailable'})
+                return
+            try:
+                h = q.get('h', [''])[0]
+                winner = q.get('winner', [''])[0] or None
+                red = q.get('red', [''])[0] or None
+                blue = q.get('blue', [''])[0] or None
+                opp = q.get('opponent', [''])[0] or None
+                sharecode = q.get('share', [''])[0] or None
+                # map opponent name to red/blue side based on parity of plies? caller
+                # supplies red/blue directly; opponent is whichever side is not 'me'
+                saved = learning.record_game(h, winner, red_name=red, blue_name=blue,
+                                             sharecode=sharecode)
+                archived=None
+                if sharecode:
+                    archived=os.path.basename(archive_finished_game(
+                        sharecode,h,winner,red,blue))
+                self._send(200, {'recorded': saved, 'archived': archived,
+                                 'winner': winner, 'opponent': opp})
+            except Exception as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/analyze':
+            # Post-game review: grade every ply of `side` and return the top
+            # blunders (moves that scored worse than the coach's best).
+            q = parse_qs(u.query)
+            try:
+                hist = parse_move(q.get('h', [''])[0])
+                side_s = q.get('side', ['red'])[0].lower()
+                if side_s not in ('red', 'blue'):
+                    raise ValueError('side must be red or blue')
+                side = {'red': c.RED, 'blue': c.BLUE}[side_s]
+                depth = int(q.get('depth', ['2'])[0])
+                seconds = float(q.get('seconds', ['1.0'])[0])
+                if not 1 <= depth <= 4 or not 0 < seconds <= 10:
+                    raise ValueError('depth 1-4, seconds >0 and at most 10')
+                # Bound the complete review request, including lock acquisition.
+                if not SEARCH_LOCK.acquire(timeout=.1):
+                    self._send(429, {'error': 'Coach is busy; try again shortly'})
+                    return
+                try:
+                    if 'red' in q or 'blue' in q:
+                        import live_coach
+                        live_coach.validated_game({k:v[0] for k,v in q.items()})
+                    rows = c.grade_game(hist, side, depth=depth, time_limit=seconds, total_time=12)
+                finally:
+                    SEARCH_LOCK.release()
+                blunders = [r for r in rows if r.get('depth',0)>=2 and r.get('delta') is not None and r['delta'] > 0]
+                blunders.sort(key=lambda r: -r['delta'])
+                self._send(200, {'side': side_s, 'plies_graded': len(rows),
+                                 'blunders': blunders[:3], 'all': rows,
+                                 'complete': len(rows)==sum(i%2==side for i in range(len(hist))),
+                                 'winner': c.Game(hist).winner})
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e)})
+            return
+        if u.path == '/api/move-position':
+            # Live-overlay path: search from an explicit board position so a
+            # wrong/partial move history can never desync the coach.
+            q = parse_qs(u.query)
+            try:
+                red_sq = q.get('red', [''])[0].lower()
+                blue_sq = q.get('blue', [''])[0].lower()
+                walls = [w for w in q.get('walls', [''])[0].split(',') if w]
+                side_s = q.get('side', [''])[0].lower()
+                if side_s not in ('red', 'blue'):
+                    raise ValueError('side must be red or blue')
+                side = {'red': c.RED, 'blue': c.BLUE}[side_s]
+                for sq in (red_sq, blue_sq):
+                    if not sq or len(sq) != 2 or sq[0] not in c.LETTERS or not sq[1].isdigit():
+                        raise ValueError(f'Invalid square {sq!r}')
+                depth = int(q.get('depth', ['2'])[0])
+                seconds = float(q.get('seconds', ['4'])[0])
+                if not 1 <= depth <= 6 or not 0 < seconds <= 15:
+                    raise ValueError('depth 1-6, seconds >0 and at most 15')
+                red_left = int(q.get('red_left', ['10'])[0])
+                blue_left = int(q.get('blue_left', ['10'])[0])
+                if not SEARCH_LOCK.acquire(blocking=False):
+                    self._send(429, {'error': 'Coach is busy; try again shortly'})
+                    return
+                try:
+                    result = c.search_position(red_sq, blue_sq, walls, side, depth, seconds,
+                                               red_left, blue_left)
+                finally:
+                    SEARCH_LOCK.release()
+                scored = result['scored'] if result else []
+                top = [[s, m] for s, m in scored[:5]]
+                self._send(200, {
+                    'to_move': side_s,
+                    'top': top,
+                    'pawns': {'red': red_sq, 'blue': blue_sq},
+                    'walls': sorted(walls),
+                    'search': {k: v for k, v in result.items() if k != 'scored'},
+                    'legal_history': True,
+                })
+            except (ValueError, TypeError) as e:
+                self._send(400, {'error': str(e)})
             return
         if u.path == '/' or u.path == '/index.html':
             with open(UI, 'rb') as f:
@@ -68,6 +551,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {'error': 'not found'})
 
 if __name__ == '__main__':
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8807
-    print(f'barricade-coach on http://127.0.0.1:{port}')
-    ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8810
+    try:
+        httpd = LocalServer(('127.0.0.1', port), Handler)
+    except OSError as exc:
+        sys.exit(f'Cannot open port {port}: {exc}. Stop the older coach or run python server.py with another port, e.g. 8810.')
+    print(f'barricade-coach on http://127.0.0.1:{port}', flush=True)
+    httpd.serve_forever()

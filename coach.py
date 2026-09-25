@@ -15,6 +15,38 @@ Notation (verified against barricade.gg games):
 
 from collections import deque
 import sys
+import re
+import time
+import math
+import argparse
+import json
+from functools import lru_cache
+
+WIN = 100000
+
+# Path-robustness: a lead is only as safe as the route is hard to block. A pawn
+# with a single shortest path can be forced onto a long detour by one wall; a
+# pawn with several distinct shortest routes is much harder to wall off. We cap
+# the distinct-route count here (more than this is just "safe").
+RESILIENCE_CAP = 3
+FRAGILITY_CP = 18.0   # centipawn penalty per fragility unit (when the other side can still wall)
+ROUTE_OPTION_CP = 12.0
+WALL_RESERVE_CP = 24.0
+LATE_WALL_RESERVE_CP = 12.0
+
+
+def parse_history(value):
+    if isinstance(value, str):
+        value = value.split(',') if value.strip() else []
+    return [normalize_move(m) for m in value]
+
+def normalize_move(m):
+    if not isinstance(m, str):
+        raise ValueError('Move must be text')
+    m = m.strip().lower()
+    if not re.fullmatch(r'(?:[a-i][1-9]|[hv][a-h][1-8])', m):
+        raise ValueError(f'Invalid notation: {m!r}; use e2 or hd4')
+    return m
 
 LETTERS = 'abcdefghi'
 FILES = {c: i for i, c in enumerate(LETTERS)}   # a=0..h? i=8
@@ -31,9 +63,6 @@ def letter_idx(x): return FILES[x]
 # Vertical wall vXY: separates columns X and X+1 across rows rank Y..Y+1
 #   (row idx Y-1 and Y). Valid X in a..h, Y in 1..8.
 # (row idx = rank-1; rank1 = row0 ... rank9 = row8)
-
-def H_rows(h):  # h = (file_letter, rank) -> set of blocked (rowA,rowB) pairs per column handled in move fn
-    pass
 
 def wall_segments(w):
     """Return list of blocked cell-pairs (tuples of 2 cells) for wall w.
@@ -57,6 +86,8 @@ def wall_anchor_line(w):
 
 def legal_wall(ws, w, pawns):
     """ws: set of existing wall keys ('hXY'/'vXY'); w new wall; pawns both positions."""
+    if not isinstance(w, str) or not re.fullmatch(r'[hv][a-h][1-8]', w):
+        return False
     typ, fx, y = w[0], w[1], int(w[2:])
     fxi = letter_idx(fx)
     if not (0 <= fxi <= 7 and 1 <= y <= 8):
@@ -81,30 +112,51 @@ def legal_wall(ws, w, pawns):
     return True
 
 def blocked(ws):
+    return _blocked(frozenset(ws))
+
+@lru_cache(maxsize=4096)
+def _blocked(ws):
     """ws: set of wall strings -> frozenset of blocked adjacency pairs (both orders)."""
     s = set()
     for w in ws:
         for a, b in wall_segments(w):
             s.add((a, b)); s.add((b, a))
-    return s
+    return frozenset(s)
 
 def path_exists(ws, start, goal_row, ignore=None):
     """BFS over cells; only walls block. Returns True if reachable."""
+    return shortest(ws, start, goal_row) is not None
+
+@lru_cache(maxsize=4096)
+def graph(ws):
     blk = blocked(ws)
-    q = deque([start]); seen = {start}
+    return tuple(tuple(n[1]*9+n[0] for n in ((x+1,y),(x-1,y),(x,y+1),(x,y-1))
+                       if 0 <= n[0] < 9 and 0 <= n[1] < 9 and ((x,y),n) not in blk)
+                 for y in range(9) for x in range(9))
+
+@lru_cache(maxsize=8192)
+def distances(ws, goal_row):
+    adj = graph(ws)
+    dist = [99]*81
+    q = deque(range(goal_row*9, goal_row*9+9))
+    for i in q:
+        dist[i] = 0
     while q:
-        c, r = q.popleft()
-        if r == goal_row:
-            return True
-        for dc, dr in ((1,0),(-1,0),(0,1),(0,-1)):
-            nc, nr = c+dc, r+dr
-            if 0 <= nc <= 8 and 0 <= nr <= 8 and (nc, nr) not in seen:
-                if ((c, r), (nc, nr)) in blk:
-                    continue
-                seen.add((nc, nr)); q.append((nc, nr))
-    return False
+        i = q.popleft()
+        for j in adj[i]:
+            if dist[j] == 99:
+                dist[j] = dist[i]+1
+                q.append(j)
+    return tuple(dist)
 
 def shortest(ws, start, goal_row, blockers=()):
+    if not blockers:
+        d = distances(frozenset(ws), goal_row)[start[1]*9+start[0]]
+        return None if d == 99 else d
+    return _shortest(frozenset(ws), start, goal_row, tuple(blockers))
+
+@lru_cache(maxsize=65536)
+def _shortest(ws, start, goal_row, blockers=()):
     """BFS step count; walls + blocker cells block. Returns None if unreachable."""
     blk = blocked(ws)
     q = deque([(start, 0)]); seen = {start}
@@ -120,23 +172,119 @@ def shortest(ws, start, goal_row, blockers=()):
                 seen.add((nc, nr)); q.append(((nc, nr), d+1))
     return None
 
+@lru_cache(maxsize=8192)
+def path_resilience(ws, start, goal_row, cap=RESILIENCE_CAP):
+    """Number of files used by a path within two steps of shortest, capped.
+
+    A two-step allowance recognizes useful nearby escape lanes on an open board
+    while excluding distant horizontal detours. This measures practical route
+    breadth before the raw shortest distance worsens.
+    """
+    adj = graph(frozenset(ws))
+    def bfs(sources):
+        dist = [99]*81
+        dq = deque()
+        for s in sources:
+            dist[s] = 0
+            dq.append(s)
+        while dq:
+            i = dq.popleft()
+            for j in adj[i]:
+                if dist[j] == 99:
+                    dist[j] = dist[i] + 1
+                    dq.append(j)
+        return dist
+    to_goal = distances(frozenset(ws), goal_row)
+    s0 = start[1]*9 + start[0]
+    if to_goal[s0] == 99:
+        return 0
+    from_start = bfs([s0])
+    d0 = to_goal[s0]
+    files = {cell % 9 for cell in range(81)
+             if to_goal[cell] != 99 and from_start[cell] + to_goal[cell] <= d0+2}
+    return min(len(files), cap)
+
 # --- game state -----------------------------------------------------------
 class Game:
     def __init__(self, history=()):
         self.history = []
         self.walls = set()
         self.pawns = {RED: STARTS[RED], BLUE: STARTS[BLUE]}
-        for mv in history:
-            self.apply(mv)
+        self.remaining = {RED: 10, BLUE: 10}
+        for i, mv in enumerate(parse_history(history)):
+            try:
+                self.apply(mv)
+            except ValueError as exc:
+                raise ValueError(f'Ply {i + 1}: {exc}') from exc
 
     @property
     def to_move(self):
         return RED if len(self.history) % 2 == 0 else BLUE
 
     def apply(self, mv):
+        mv = normalize_move(mv)
+        if self.winner is not None:
+            raise ValueError('Game already finished')
+        if len(mv) == 3:
+            valid = self.remaining[self.to_move] > 0 and self.is_wall_legal(mv)
+        else:
+            valid = mv in [f'{LETTERS[p[0]]}{p[1]+1}' for _, p in self.pawn_moves(self.to_move)]
+        if not valid:
+            raise ValueError(f'Illegal move {mv}')
+        self._play(mv)
+
+    @property
+    def winner(self):
+        return next((s for s in (RED, BLUE) if self.pawns[s][1] == GOALS[s]), None)
+
+    def copy(self):
+        g = object.__new__(type(self))
+        g.history = self.history.copy()
+        g.walls = self.walls.copy()
+        g.pawns = self.pawns.copy()
+        g.remaining = self.remaining.copy()
+        return g
+
+    @classmethod
+    def from_position(cls, red_sq, blue_sq, walls, side, red_left=10, blue_left=10):
+        """Build a Game from an explicit position instead of a move history.
+        red_sq/blue_sq: 'e5' squares; walls: list of wall notations; side: RED/BLUE
+        (the side to move). Used by the live overlay so a wrong/partial move
+        history can never desync the board the coach reasons about."""
+        if side not in (RED, BLUE):
+            raise ValueError('Invalid side')
+        for sq in (red_sq, blue_sq):
+            if not isinstance(sq, str) or not re.fullmatch(r'[a-i][1-9]', sq):
+                raise ValueError('Invalid pawn square')
+        if red_sq == blue_sq:
+            raise ValueError('Pawns cannot occupy the same square')
+        for count in (red_left, blue_left):
+            if type(count) is not int or not 0 <= count <= 10:
+                raise ValueError('Wall reserves must be integers from 0 to 10')
+        walls = list(walls)
+        if len(set(walls)) != len(walls) or len(walls) != 20-red_left-blue_left:
+            raise ValueError('Placed walls and remaining counts disagree')
+        g = cls()
+        g.history = ['~'] if side == BLUE else []
+        g.pawns = {RED: (letter_idx(red_sq[0]), int(red_sq[1])-1),
+                   BLUE: (letter_idx(blue_sq[0]), int(blue_sq[1])-1)}
+        for wall in walls:
+            if not isinstance(wall, str) or not re.fullmatch(r'[hv][a-h][1-8]', wall):
+                raise ValueError('Invalid wall notation')
+            if not g.is_wall_legal(wall):
+                raise ValueError('Walls overlap, cross, or block a goal')
+            g.walls.add(wall)
+        if red_sq[1] == '9' and blue_sq[1] == '1':
+            raise ValueError('Both players cannot have won')
+        g.remaining = {RED: red_left, BLUE: blue_left}
+        return g
+
+    def _play(self, mv):
+        """Internal only: apply a move already validated or generated as legal."""
         mover = self.to_move
         if mv[0] in 'hv' and len(mv) == 3:
             self.walls.add(mv)
+            self.remaining[mover] -= 1
         else:
             # pawn move (destination square)
             col, row = letter_idx(mv[0]), int(mv[1]) - 1
@@ -144,6 +292,8 @@ class Game:
         self.history.append(mv)
 
     def pawn_moves(self, side):
+        if self.winner is not None:
+            return []
         p = self.pawns[side]
         opp = self.pawns[1 - side]
         blk = blocked(self.walls)
@@ -177,6 +327,9 @@ class Game:
 
     def legal_walls(self, side=None):
         """All legal wall placements (full scan - 128 slots max)."""
+        side = self.to_move if side is None else side
+        if self.winner is not None or self.remaining[side] == 0:
+            return []
         out = []
         for typ in ('h', 'v'):
             for fx in LETTERS[:8]:
@@ -196,44 +349,326 @@ class Game:
         return m
 
     def eval_side(self, side):
-        """Score from `side` perspective: my shortest - their shortest (lower=better for me).
-        If one pawn has no path -> treat as huge loss for it."""
-        mine = shortest(self.walls, self.pawns[side], GOALS[side])
-        theirs = shortest(self.walls, self.pawns[1-side], GOALS[1-side])
+        """Heuristic centipawns; lower is better. Terminal results dominate.
+
+        Terms, in order of weight:
+          1. race: 100 * (my distance - their distance) to goal. DOMINANT.
+          2. wall reserves: 8 * (their walls left - my walls left).
+          3. fragility: a lead only matters if my route is hard to block. A
+             pawn with a single shortest path (fragility 2) that the opponent
+             can still wall off is worth less than the raw race says, so we
+             discount my position by FRAGILITY_CP per missing alternative route
+             and reward the same weakness in the opponent. This is what makes
+             the coach spend a wall to protect its own corridor instead of
+             blindly advancing when "ahead". Gated on the other side having
+             walls left: with no walls in hand, nobody can be blocked further.
+          4. tempo: small side-to-move term."""
+        if self.winner is not None:
+            return -WIN if self.winner == side else WIN
+        mine = self.race_distance(side)
+        theirs = self.race_distance(1-side)
         if mine is None: mine = 99
         if theirs is None: theirs = 99
-        return mine - theirs
+        reserve_cp=WALL_RESERVE_CP if sum(self.remaining.values())>=10 else LATE_WALL_RESERVE_CP
+        score = 100 * (mine - theirs) + reserve_cp * (self.remaining[1-side] - self.remaining[side])
+        if self.remaining[1-side] > 0:
+            my_res = path_resilience(frozenset(self.walls), self.pawns[side], GOALS[side])
+            score += FRAGILITY_CP * (RESILIENCE_CAP - my_res)
+            my_options = self.route_options(side)
+            score += ROUTE_OPTION_CP * (RESILIENCE_CAP - my_options)
+        if self.remaining[side] > 0:
+            their_res = path_resilience(frozenset(self.walls), self.pawns[1-side], GOALS[1-side])
+            score -= FRAGILITY_CP * (RESILIENCE_CAP - their_res)
+            their_options = self.route_options(1-side)
+            score -= ROUTE_OPTION_CP * (RESILIENCE_CAP - their_options)
+        return score + (-50 if self.to_move == side else 50)
+
+    def race_distance(self, side):
+        """One legal pawn turn then wall-only distance: local jump heuristic."""
+        return min((1 + shortest(self.walls, p, GOALS[side]) for _, p in self.pawn_moves(side)), default=99)
+
+    def route_options(self, side, cap=RESILIENCE_CAP):
+        """Count legal pawn continuations within two steps of best, capped.
+
+        This catches a pawn entering a one-exit corridor before the raw shortest
+        path becomes worse. The term is active only while the opponent can
+        still place walls.
+        """
+        moves=self.pawn_moves(side)
+        if not moves:return 0
+        lengths=[1+shortest(self.walls,p,GOALS[side]) for _,p in moves]
+        best=min(lengths)
+        return min(cap,sum(length<=best+2 for length in lengths))
 
 # --- coaching search ------------------------------------------------------
-def best_moves(history, side, n=3, depth=2, verbose=True):
+class SearchTimeout(Exception):
+    pass
+
+
+def relevant_walls(state, slack=2):
+    """Legal walls touching a near-shortest route for either pawn.
+
+    A tactical wall must block an edge a pawn may plausibly use. Generating
+    anchors from those edges avoids scanning all 128 board slots at every node
+    while retaining immediate blocks and two-step route traps.
+    """
+    if not state.remaining[state.to_move]:return []
+    adj=graph(frozenset(state.walls));walls=set()
+    for side in (RED,BLUE):
+        start=state.pawns[side][1]*9+state.pawns[side][0]
+        from_start=[99]*81;from_start[start]=0;q=deque([start])
+        while q:
+            cell=q.popleft()
+            for nxt in adj[cell]:
+                if from_start[nxt]==99:
+                    from_start[nxt]=from_start[cell]+1;q.append(nxt)
+        to_goal=distances(frozenset(state.walls),GOALS[side]);best=to_goal[start]
+        for cell in range(81):
+            if from_start[cell]==99:continue
+            x,y=cell%9,cell//9
+            for nxt in adj[cell]:
+                if from_start[cell]+1+to_goal[nxt]>best+slack:continue
+                nx,ny=nxt%9,nxt//9
+                if x==nx:
+                    rank=max(y,ny)
+                    for anchor in (x-1,x):
+                        if 0<=anchor<8 and 1<=rank<=8:walls.add(f'h{LETTERS[anchor]}{rank}')
+                else:
+                    anchor=min(x,nx)
+                    for rank in (y,y+1):
+                        if 0<=anchor<8 and 1<=rank<=8:walls.add(f'v{LETTERS[anchor]}{rank}')
+    return [wall for wall in sorted(walls) if state.is_wall_legal(wall)]
+
+def search(history, side=None, depth=2, time_limit=5.0):
+    """Full-width iterative deepening. Only complete, equally deep root scores survive."""
+    if not isinstance(depth, int) or not 1 <= depth <= 12:
+        raise ValueError('Depth must be an integer from 1 to 12')
+    if not isinstance(time_limit, (int, float)) or not math.isfinite(time_limit) or time_limit <= 0:
+        raise ValueError('Time limit must be positive and finite')
+    started = time.monotonic()
+    deadline = started + time_limit
     g = Game(history)
-    assert g.to_move == side, f"history parity: {'red' if g.to_move==RED else 'blue'} to move, not {side}"
-    cands = g.moves(side)
-    scored = []
-    for mv in cands:
-        g2 = Game(history)
-        g2.apply(mv)
-        v = g2.eval_side(side)  # after my move, their turn: they'll minimize my score
-        if depth >= 2 and not win_move(g2, side):
-            # opponent best reply: they maximize my score (mySP-theirSP high = bad for me)
-            best_rep = None
-            for rep in g2.moves(1 - side):
-                g3 = Game(g2.history)
-                g3.apply(rep)
-                rv = g3.eval_side(side)
-                if best_rep is None or rv > best_rep[0]:
-                    best_rep = (rv, rep)
-            v = best_rep[0] if best_rep is not None else v
-        scored.append((v, mv))
-    scored.sort(key=lambda x: x[0])
-    if verbose:
-        pass
+    side = g.to_move if side is None else side
+    if side not in (RED, BLUE) or g.to_move != side:
+        raise ValueError(f'History says {"red" if g.to_move == RED else "blue"} to move')
+    return _search_game(g, side, depth, time_limit, started, deadline)
+
+
+def search_position(red_sq, blue_sq, walls, side, depth=2, time_limit=5.0,
+                    red_left=10, blue_left=10):
+    """Search from an explicit position (live overlay path) instead of history.
+    side: RED/BLUE = the side to move."""
+    if not isinstance(depth, int) or not 1 <= depth <= 12:
+        raise ValueError('Depth must be an integer from 1 to 12')
+    if not isinstance(time_limit, (int, float)) or not math.isfinite(time_limit) or time_limit <= 0:
+        raise ValueError('Time limit must be positive and finite')
+    if side not in (RED, BLUE):
+        raise ValueError('side must be red or blue')
+    started = time.monotonic()
+    deadline = started + time_limit
+    g = Game.from_position(red_sq, blue_sq, walls, side, red_left, blue_left)
+    return _search_game(g, side, depth, time_limit, started, deadline)
+
+
+def candidate_search(history, side=None, depth=3, time_limit=2.0, beam=12,
+                     root_moves=(), root_slack=4, wide_root=True,
+                     preserve_depth2_pawn_margin=None):
+    """Deterministic selective minimax for wall-rich live positions.
+
+    Full-width depth two often cannot finish inside the live safeguard budget
+    because a position can have more than 120 legal walls at every ply. This
+    search keeps every pawn move, the statically strongest wall candidates and
+    explicitly supplied MCTS root candidates. It is selective rather than a
+    proof, but all returned moves are legal and every published iteration is
+    complete over the declared candidate set.
+    """
+    if (not 1 <= depth <= 6 or not 2 <= beam <= 32
+            or not isinstance(root_slack, int) or not 2 <= root_slack <= 8):
+        raise ValueError('Invalid candidate-search limits')
+    if (preserve_depth2_pawn_margin is not None and
+            (not isinstance(preserve_depth2_pawn_margin,(int,float)) or
+             preserve_depth2_pawn_margin<0)):
+        raise ValueError('Invalid depth-2 pawn margin')
+    started=time.monotonic();deadline=started+time_limit;g=Game(history)
+    side=g.to_move if side is None else side
+    if side!=g.to_move:raise ValueError('Wrong side to move')
+    nodes=0
+    def check():
+        if time.monotonic()>=deadline:raise SearchTimeout
+    def candidates(state, forced=(),root=False):
+        check();rows=[]
+        moves=[f'{LETTERS[p[0]]}{p[1]+1}' for _,p in state.pawn_moves(state.to_move)]
+        # Root coverage is deliberately wider than the recursive beam. Sharp
+        # defensive walls can sit four plies away from today's shortest path:
+        # pruning them before minimax sees an opponent reply made the live
+        # safeguard blind at 52s6kd p18 and zjj0bn p29. Keep every legal wall
+        # touching a route within ``root_slack`` at the root; descendants use
+        # the original tight route set and beam so the search still completes
+        # inside the live reserve.
+        moves.extend(relevant_walls(state, root_slack if root else 2))
+        if forced:
+            legal_forced=set(state.moves(state.to_move))
+            moves.extend(move for move in forced if move not in moves and move in legal_forced)
+        for move in moves:
+            check();child=state.copy();child._play(move)
+            rows.append((child.eval_side(side),move,child))
+        reverse=state.to_move!=side
+        rows.sort(key=lambda row:((-row[0] if reverse else row[0]),len(row[1]),row[1]))
+        keep={move for _,move,_ in rows[:beam*(2 if root else 1)]}
+        if root and wide_root:
+            keep.update(move for _,move,_ in rows if len(move)==3)
+        keep.update(move for _,move,_ in rows if len(move)==2)
+        keep.update(move for move in forced if move in {row[1] for row in rows})
+        return [row for row in rows if row[1] in keep]
+    roots=candidates(g,root_moves,root=True);initial_root_candidates=len(roots)
+    scored=[(score,move) for score,move,_ in roots];scored.sort()
+    completed=1;pv=[scored[0][1]] if scored else []
+    def minimax(state,left,alpha,beta,ply):
+        nonlocal nodes
+        check();nodes+=1
+        if state.winner is not None:return (-WIN+ply if state.winner==side else WIN-ply),[]
+        if left==0:return state.eval_side(side),[]
+        maximizing=state.to_move!=side
+        value=-math.inf if maximizing else math.inf;line=[]
+        for _,move,child in candidates(state):
+            score,tail=minimax(child,left-1,alpha,beta,ply+1)
+            if (score>value if maximizing else score<value):value,line=score,[move]+tail
+            if maximizing:alpha=max(alpha,value)
+            else:beta=min(beta,value)
+            if alpha>=beta:break
+        return value,line
+    timed_out=False;stopped_on_decisive_pawn=False
+    try:
+        for current in range(2,depth+1):
+            iteration=[];lines={}
+            for _,move,child in roots:
+                value,tail=minimax(child,current-1,-math.inf,math.inf,1)
+                iteration.append((value,move));lines[move]=[move]+tail
+            iteration.sort(key=lambda row:(row[0],len(row[1]),row[1]))
+            scored=iteration;completed=current;pv=lines[scored[0][1]]
+            order={move:i for i,(_,move) in enumerate(scored)}
+            roots.sort(key=lambda row:order[row[1]])
+            if current==2 and preserve_depth2_pawn_margin is not None and scored:
+                best_score,best_move=scored[0]
+                wall_scores=[score for score,move in scored if len(move)==3]
+                if (len(best_move)==2 and wall_scores and
+                        min(wall_scores)-best_score>preserve_depth2_pawn_margin):
+                    # A complete all-wall coverage pass already found a clear
+                    # pawn tempo. Do not let a selective deeper iteration turn
+                    # that margin into a tie which MCTS then breaks by spending
+                    # a wall. This preserves 52s6kd ply 16.
+                    stopped_on_decisive_pawn=True
+                    break
+            if current==2 and wide_root and len(roots)>beam:
+                # Depth 2 is the coverage pass: every relevant root wall was
+                # compared against an opponent reply. Carrying all of them
+                # into depth 3 made the tactical reserve expire before it
+                # could separate tied wall families. Narrow only after that
+                # complete comparison, retaining every externally supplied
+                # MCTS candidate so an override always compares like for like.
+                forced=set(root_moves)
+                keep={move for _,move,_ in roots[:beam]}|forced
+                roots=[row for row in roots if row[1] in keep]
+    except SearchTimeout:
+        timed_out=True
+    return dict(scored=scored,depth=completed,nodes=nodes,elapsed=time.monotonic()-started,
+                timed_out=timed_out,principal_variation=pv,selective=True,beam=beam,
+                root_candidates=len(roots),initial_root_candidates=initial_root_candidates,
+                staged_root_narrowing=initial_root_candidates>len(roots),
+                stopped_on_decisive_pawn=stopped_on_decisive_pawn,
+                root_slack=root_slack,wide_root=wide_root)
+
+
+def _search_game(g, side, depth, time_limit, started, deadline):
+    if g.winner is not None:
+        return dict(scored=[], depth=0, nodes=0, elapsed=time.monotonic()-started, timed_out=False, winner=g.winner, principal_variation=[])
+    nodes = 0
+    transpositions = {}
+    tt_hits = 0
+    def state_key(state):
+        """History-independent board key for exact completed-depth reuse."""
+        return (state.pawns[RED], state.pawns[BLUE], tuple(sorted(state.walls)),
+                state.remaining[RED], state.remaining[BLUE], state.to_move)
+    def check_time():
+        if time.monotonic() >= deadline:
+            raise SearchTimeout
+    def children(state):
+        out = []
+        candidates = [f'{LETTERS[p[0]]}{p[1]+1}' for _, p in state.pawn_moves(state.to_move)]
+        if state.remaining[state.to_move]:
+            for typ in 'hv':
+                for fx in LETTERS[:8]:
+                    for y in range(1, 9):
+                        check_time()
+                        w = f'{typ}{fx}{y}'
+                        if state.is_wall_legal(w):
+                            candidates.append(w)
+        for mv in candidates:
+            check_time()
+            child = state.copy()
+            child._play(mv)
+            out.append((child.eval_side(side), mv, child))
+        out.sort(key=lambda x: (x[0] if state.to_move == side else -x[0], len(x[1]), x[1]))
+        return out
+    def minimax(state, left, alpha, beta, ply):
+        nonlocal nodes, tt_hits
+        check_time()
+        nodes += 1
+        if state.winner is not None:
+            return (-WIN + ply if state.winner == side else WIN - ply), []
+        if left == 0:
+            return state.eval_side(side), []
+        key=(state_key(state),left)
+        cached=transpositions.get(key)
+        if cached is not None:
+            tt_hits += 1
+            return cached
+        maximizing = state.to_move != side
+        value, line = (-math.inf if maximizing else math.inf), []
+        complete=True
+        for _, mv, child in children(state):
+            v, tail = minimax(child, left-1, alpha, beta, ply+1)
+            if (v > value if maximizing else v < value):
+                value, line = v, [mv] + tail
+            if maximizing:
+                alpha = max(alpha, value)
+            else:
+                beta = min(beta, value)
+            if alpha >= beta:
+                complete=False
+                break
+        # Alpha-beta cutoffs are bounds. Cache only complete exact results.
+        if complete:
+            transpositions[key]=(value,line)
+        return value, line
+    fallback = min(g.pawn_moves(side), key=lambda x: (shortest(g.walls, x[1], GOALS[side]), x[1]))[1]
+    fallback = f'{LETTERS[fallback[0]]}{fallback[1]+1}'
+    scored, completed, pv, timed_out = [(g.eval_side(side), fallback)], 0, [fallback], False
+    try:
+        roots = children(g)
+        for current in range(1, depth+1):
+            iteration, lines = [], {}
+            for _, mv, child in roots:
+                v, tail = minimax(child, current-1, -math.inf, math.inf, 1)
+                iteration.append((v, mv))
+                lines[mv] = [mv] + tail
+            iteration.sort(key=lambda x: (x[0], len(x[1]), x[1]))
+            scored, completed, pv = iteration, current, lines[iteration[0][1]]
+            order = {mv: i for i, (_, mv) in enumerate(scored)}
+            roots.sort(key=lambda x: order[x[1]])
+    except SearchTimeout:
+        timed_out = True
+    return dict(scored=scored, depth=completed, nodes=nodes, tt_hits=tt_hits,
+                elapsed=time.monotonic()-started,
+                timed_out=timed_out, winner=None, principal_variation=pv)
+
+def best_moves(history, side, n=3, depth=2, verbose=True, time_limit=5.0):
+    scored = search(history, side, depth, time_limit)['scored']
     return scored[:n], scored
 
 def win_move(g2, side):
-    """After a move, did that side just win or is it 1 step away on its next turn?"""
-    sp = shortest(g2.walls, g2.pawns[side], GOALS[side])
-    return sp == 0
+    """True only when that pawn has reached its goal."""
+    return g2.winner == side
 
 def analyze(history, side):
     top, allm = best_moves(history, side, n=5)
@@ -242,7 +677,11 @@ def analyze(history, side):
 def explain(history, side, move):
     """Detailed look at one candidate: resulting paths + opponent's best reply."""
     g = Game(history)
+    if g.to_move != side:
+        raise ValueError('Wrong side to move')
     g.apply(move)
+    if g.winner is not None:
+        return f'Play {move}: reaches the goal and wins immediately.'
     me, opp = (RED, BLUE) if side == RED else (BLUE, RED)
     def sps(gg):
         return (shortest(gg.walls, gg.pawns[RED], GOALS[RED]),
@@ -251,8 +690,8 @@ def explain(history, side, move):
     # opponent best reply (maximizes my score)
     worst = None
     for rep in g.moves(opp):
-        g3 = Game(g.history)
-        g3.apply(rep)
+        g3 = g.copy()
+        g3._play(rep)
         rv = g3.eval_side(side)
         if worst is None or rv > worst[0]:
             worst = (rv, rep)
@@ -266,19 +705,26 @@ def explain(history, side, move):
              f"  their best reply: {worst[1]} -> red SP={final[0]}, blue SP={final[1]} (score {worst[0]:+d})"]
     return "\n".join(lines)
 
-def grade_game(history, side, n=4):
+def grade_game(history, side, n=4, depth=2, time_limit=5.0, total_time=None):
     """Grade every ply of `side` in history using coach best-moves.
     Returns list of dicts: ply, move, rank, best, score_played, score_best, n_cand."""
+    deadline = time.monotonic()+total_time if total_time is not None else math.inf
+    history = Game(history).history
+    if side not in (RED, BLUE):
+        raise ValueError('Side must be red (0) or blue (1)')
     rows = []
     for i in range(len(history)):
         if i % 2 != (0 if side == RED else 1):
             continue
         state = history[:i]
-        try:
-            scored = best_moves(state, side, n=0)[1]  # full sorted list
-        except Exception:
-            rows.append(dict(ply=i, move=history[i], rank=None, best=None,
-                             score_played=None, score_best=None, delta=None))
+        remaining = deadline-time.monotonic()
+        if remaining <= 0: break
+        result = search(state, side, depth, min(time_limit, remaining))
+        scored = result['scored']
+        if result['depth'] == 0:
+            rows.append(dict(ply=i+1, move=history[i], rank=None, best=None,
+                             score_played=None, score_best=None, delta=None,
+                             depth=0, timed_out=True))
             continue
         if not scored:
             rows.append(dict(ply=i, move=history[i], rank=None, best=None,
@@ -290,10 +736,11 @@ def grade_game(history, side, n=4):
         for sc, m in scored:
             if m == mv:
                 played_sc = sc
-                rank = scored.index((sc, m)) + 1
+                rank = 1 + sum(s < sc for s, _ in scored)
                 break
-        rows.append(dict(ply=i, move=mv, rank=rank if played_sc is not None else None,
+        rows.append(dict(ply=i+1, move=mv, rank=rank if played_sc is not None else None,
                          best=best_mv, score_played=played_sc, score_best=best_sc,
+                         depth=result['depth'], timed_out=result['timed_out'],
                          delta=(played_sc - best_sc) if played_sc is not None else None))
     return rows
 
@@ -301,28 +748,49 @@ def replay_valid(history):
     g = Game()
     for i, mv in enumerate(history):
         side = g.to_move
-        legal = g.moves(side)
-        if mv not in legal:
+        try:
+            g.apply(mv)
+        except ValueError:
             return False, i, mv, side
-        g.apply(mv)
     return True, len(history), None, None
 
+def main():
+    parser = argparse.ArgumentParser(description='Local Quoridor coach; heuristic advice, not perfect play.')
+    parser.add_argument('history', nargs='?', default='')
+    parser.add_argument('side', nargs='?', choices=['red', 'blue'])
+    parser.add_argument('mode', nargs='?', choices=['explain'])
+    parser.add_argument('--depth', type=int, default=2)
+    parser.add_argument('--seconds', type=float, default=5)
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--engine', choices=['python','mcts'], default='python')
+    parser.add_argument('--rollouts', type=int, default=60000)
+    parser.add_argument('--seed', type=int)
+    args = parser.parse_args()
+    try:
+        hist = parse_history(args.history)
+        side = None if args.side is None else (RED if args.side == 'red' else BLUE)
+        if args.engine == 'mcts':
+            import mcts_coach
+            result = mcts_coach.search(hist, side, args.seconds, args.rollouts, args.seed)
+        else:
+            result = search(hist, side, args.depth, args.seconds)
+        if args.json:
+            print(json.dumps(result))
+        elif result['winner'] is not None:
+            print(f'Game over: {"red" if result["winner"] == RED else "blue"} won')
+        else:
+            if args.engine == 'mcts':
+                print(f'MCTS: {result["simulations"]} simulations, {result["elapsed"]:.2f}s; score = negative visits (tactical overrides take priority)')
+            else:
+                print(f'Completed depth {result["depth"]}, {result["elapsed"]:.2f}s; heuristic score, lower is better')
+            if result['timed_out']:
+                print('Time budget reached; showing last complete iteration (depth 0 means fallback).')
+            for score, move in result['scored'][:6]:
+                print(f'{move:5s} {score:+d}')
+            if args.mode == 'explain':
+                print(explain(hist, Game(hist).to_move, result['scored'][0][1]))
+    except ValueError as exc:
+        parser.error(str(exc))
+
 if __name__ == '__main__':
-    hist = sys.argv[1].split(',') if len(sys.argv) > 1 and sys.argv[1] else []
-    side = RED if sys.argv[2].lower() in ('red', 'p1', 'r') else BLUE if len(sys.argv) > 2 else None
-    if side is None:
-        # default: whoever is to move per parity
-        g = Game(hist)
-        side = g.to_move
-    ok, n, bad, bside = replay_valid(hist)
-    print(f"history replay: {'OK' if ok else f'INVALID at ply {n} move {bad} (side {bside})'}")
-    top, allm = best_moves(hist, side, n=6)
-    print(f"side to move: {'RED' if side == RED else 'BLUE'}")
-    g = Game(hist)
-    print(f"pawn SP -> red: {shortest(g.walls, g.pawns[RED], GOALS[RED])}, blue: {shortest(g.walls, g.pawns[BLUE], GOALS[BLUE])}")
-    print("top moves (score = mySP-theirSP after opp best reply; lower better):")
-    for v, mv in top:
-        print(f"   {mv:5s}  {v:+d}")
-    if len(sys.argv) > 3 and sys.argv[3] == 'explain' and top:
-        print("---")
-        print(explain(hist, side, top[0][1]))
+    main()

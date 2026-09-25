@@ -1,0 +1,310 @@
+{
+  "code": "81s8yr",
+  "winner": "blue",
+  "user_side": "red",
+  "seconds": 6.0,
+  "margin": 25.0,
+  "blunders": [
+    {
+      "ply": 11,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3"
+        ],
+        "red_left": 8,
+        "blue_left": 8,
+        "to_move": "red"
+      },
+      "played": "hh3",
+      "best": "hb3",
+      "delta": 100.0,
+      "alternatives": [
+        "hb1",
+        "hb2",
+        "hb3",
+        "hc1"
+      ],
+      "opponent_reply": "hf7"
+    },
+    {
+      "ply": 13,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6",
+        "hh3",
+        "ha6"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "ha6",
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3",
+          "hh3"
+        ],
+        "red_left": 7,
+        "blue_left": 7,
+        "to_move": "red"
+      },
+      "played": "vc4",
+      "best": "hb3",
+      "delta": 200.0,
+      "alternatives": [
+        "hb3",
+        "f4",
+        "hb1",
+        "hb2"
+      ],
+      "opponent_reply": "hg6"
+    },
+    {
+      "ply": 15,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6",
+        "hh3",
+        "ha6",
+        "vc4",
+        "ve4"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "ha6",
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3",
+          "hh3",
+          "vc4",
+          "ve4"
+        ],
+        "red_left": 6,
+        "blue_left": 6,
+        "to_move": "red"
+      },
+      "played": "hb5",
+      "best": "vd5",
+      "delta": 200.0,
+      "alternatives": [
+        "vd5",
+        "e5",
+        "hb3",
+        "hb4"
+      ],
+      "opponent_reply": "vf5"
+    },
+    {
+      "ply": 19,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6",
+        "hh3",
+        "ha6",
+        "vc4",
+        "ve4",
+        "hb5",
+        "va4",
+        "hf5",
+        "va2"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "ha6",
+          "hb5",
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3",
+          "hf5",
+          "hh3",
+          "va2",
+          "va4",
+          "vc4",
+          "ve4"
+        ],
+        "red_left": 4,
+        "blue_left": 4,
+        "to_move": "red"
+      },
+      "played": "vf7",
+      "best": "e5",
+      "delta": 200.0,
+      "alternatives": [
+        "vd5",
+        "e5",
+        "vd6",
+        "hh6"
+      ],
+      "opponent_reply": "d6"
+    },
+    {
+      "ply": 21,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6",
+        "hh3",
+        "ha6",
+        "vc4",
+        "ve4",
+        "hb5",
+        "va4",
+        "hf5",
+        "va2",
+        "vf7",
+        "hg6"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "ha6",
+          "hb5",
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3",
+          "hf5",
+          "hg6",
+          "hh3",
+          "va2",
+          "va4",
+          "vc4",
+          "ve4",
+          "vf7"
+        ],
+        "red_left": 3,
+        "blue_left": 3,
+        "to_move": "red"
+      },
+      "played": "hh5",
+      "best": "vd5",
+      "delta": 200.0,
+      "alternatives": [
+        "vd5",
+        "e5",
+        "hh4",
+        "hh5"
+      ],
+      "opponent_reply": "vh5"
+    },
+    {
+      "ply": 23,
+      "history": [
+        "e2",
+        "e8",
+        "e3",
+        "e7",
+        "e4",
+        "e6",
+        "hd3",
+        "he6",
+        "hf3",
+        "hc6",
+        "hh3",
+        "ha6",
+        "vc4",
+        "ve4",
+        "hb5",
+        "va4",
+        "hf5",
+        "va2",
+        "vf7",
+        "hg6",
+        "hh5",
+        "hh7"
+      ],
+      "position": {
+        "red": "e4",
+        "blue": "e6",
+        "walls": [
+          "ha6",
+          "hb5",
+          "hc6",
+          "hd3",
+          "he6",
+          "hf3",
+          "hf5",
+          "hg6",
+          "hh3",
+          "hh5",
+          "hh7",
+          "va2",
+          "va4",
+          "vc4",
+          "ve4",
+          "vf7"
+        ],
+        "red_left": 2,
+        "blue_left": 2,
+        "to_move": "red"
+      },
+      "played": "vg8",
+      "best": "vd5",
+      "delta": 308.0,
+      "alternatives": [
+        "vd5",
+        "e5",
+        "vd6",
+        "hh8"
+      ],
+      "opponent_reply": "hg8"
+    }
+  ],
+  "built": "2026-09-07T05:49:19Z"
+}

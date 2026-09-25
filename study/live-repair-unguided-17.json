@@ -1,0 +1,1346 @@
+{
+  "build": "working-tree",
+  "seconds": 4,
+  "seeds": [
+    2026090701,
+    2026090702,
+    2026090703,
+    2026090704,
+    2026090705
+  ],
+  "cases": 17,
+  "total_cases": 17,
+  "correct": 17,
+  "runs": 85,
+  "correct_runs": 85,
+  "illegal": 0,
+  "fallbacks": 0,
+  "p95_elapsed": 10.688,
+  "max_elapsed": 10.809,
+  "elapsed": 479.19,
+  "rows": [
+    {
+      "code": "81s8yr",
+      "ply": 11,
+      "expected": "hb1",
+      "acceptable": [
+        "hb1",
+        "hb2",
+        "hb3",
+        "hc1",
+        "hc2"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.013,
+          "simulations": 138752,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.014,
+          "simulations": 141568,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.001,
+          "simulations": 144896,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.986,
+          "simulations": 146560,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.992,
+          "simulations": 145536,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 13,
+      "expected": "hb3",
+      "acceptable": [
+        "hb3"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.994,
+          "simulations": 142720,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.992,
+          "simulations": 142720,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.998,
+          "simulations": 144256,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.021,
+          "simulations": 143744,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hb3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.012,
+          "simulations": 132992,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 15,
+      "expected": "vd5",
+      "acceptable": [
+        "hb5",
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.756,
+          "simulations": 125440,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.714,
+          "simulations": 131456,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hb5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.708,
+          "simulations": 129024,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.704,
+          "simulations": 128256,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.808,
+          "simulations": 130304,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 19,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.85,
+          "simulations": 141696,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.299,
+          "simulations": 140288,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.223,
+          "simulations": 148608,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.177,
+          "simulations": 144896,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.266,
+          "simulations": 149504,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 21,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.88,
+          "simulations": 154496,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.318,
+          "simulations": 154880,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.265,
+          "simulations": 152576,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.301,
+          "simulations": 154112,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.276,
+          "simulations": 152576,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "81s8yr",
+      "ply": 23,
+      "expected": "vd5",
+      "acceptable": [
+        "vd5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.746,
+          "simulations": 196608,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.253,
+          "simulations": 186752,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.225,
+          "simulations": 189824,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.243,
+          "simulations": 190336,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vd5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.276,
+          "simulations": 192128,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 12,
+      "expected": "d6",
+      "acceptable": [
+        "d6",
+        "hf7",
+        "hf8",
+        "hg6",
+        "hg7",
+        "hg8"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.99,
+          "simulations": 153088,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.987,
+          "simulations": 152448,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.011,
+          "simulations": 154112,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.002,
+          "simulations": 153088,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.015,
+          "simulations": 151552,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 14,
+      "expected": "d6",
+      "acceptable": [
+        "d6",
+        "e5",
+        "hf4",
+        "hf7",
+        "hf8",
+        "hg4",
+        "hg5",
+        "hg6",
+        "hg7",
+        "hg8",
+        "ve3",
+        "ve4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.982,
+          "simulations": 147328,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "d6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.109,
+          "simulations": 146304,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "d6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.286,
+          "simulations": 147712,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "d6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.253,
+          "simulations": 144384,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "d6",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.083,
+          "simulations": 146048,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 16,
+      "expected": "e5",
+      "acceptable": [
+        "e5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.895,
+          "simulations": 122112,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.21,
+          "simulations": 122496,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.151,
+          "simulations": 123136,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.163,
+          "simulations": 125696,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "e5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.154,
+          "simulations": 126976,
+          "depth": 2,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "52s6kd",
+      "ply": 18,
+      "expected": "vg3",
+      "acceptable": [
+        "vg3",
+        "vg5",
+        "vh4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vh4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.493,
+          "simulations": 135552,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.255,
+          "simulations": 132736,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.465,
+          "simulations": 136320,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.344,
+          "simulations": 136832,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.451,
+          "simulations": 134912,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "zjj0bn",
+      "ply": 27,
+      "expected": "vg1",
+      "acceptable": [
+        "vg1"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.63,
+          "simulations": 74880,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.517,
+          "simulations": 75904,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.401,
+          "simulations": 76160,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.434,
+          "simulations": 75904,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vg1",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.374,
+          "simulations": 74496,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "zjj0bn",
+      "ply": 29,
+      "expected": "hg3",
+      "acceptable": [
+        "hg2",
+        "hg3",
+        "hh2",
+        "hh3"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.082,
+          "simulations": 82560,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.398,
+          "simulations": 82432,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.975,
+          "simulations": 82816,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.05,
+          "simulations": 83456,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.2,
+          "simulations": 83328,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "tzr1w5",
+      "ply": 28,
+      "expected": "h3",
+      "acceptable": [
+        "h3"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.335,
+          "simulations": 240000,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.094,
+          "simulations": 240000,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.069,
+          "simulations": 240000,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.017,
+          "simulations": 240000,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "h3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 3.052,
+          "simulations": 240000,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "benchmark-blue-2673606728",
+      "ply": 20,
+      "expected": "hg4",
+      "acceptable": [
+        "hg4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.77,
+          "simulations": 240000,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.718,
+          "simulations": 240000,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.749,
+          "simulations": 240000,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.398,
+          "simulations": 240000,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hg4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 4.84,
+          "simulations": 240000,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    },
+    {
+      "code": "5r7nxm",
+      "ply": 14,
+      "expected": "hg5",
+      "acceptable": [
+        "hg5",
+        "vf5"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.061,
+          "simulations": 190080,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.025,
+          "simulations": 187904,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.993,
+          "simulations": 188544,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hg5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.025,
+          "simulations": 191232,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vf5",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.983,
+          "simulations": 187904,
+          "depth": 2,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "0m73sm",
+      "ply": 21,
+      "expected": "vb4",
+      "acceptable": [
+        "va4",
+        "vb4"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "vb4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.856,
+          "simulations": 97536,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "vb4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.873,
+          "simulations": 97024,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "vb4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 6.011,
+          "simulations": 96384,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "va4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.801,
+          "simulations": 96512,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "vb4",
+          "ok": true,
+          "legal": true,
+          "elapsed": 5.87,
+          "simulations": 97280,
+          "depth": 3,
+          "override": false,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 2.0
+        }
+      ]
+    },
+    {
+      "code": "4wpcv0",
+      "ply": 26,
+      "expected": "hf3",
+      "acceptable": [
+        "hf3",
+        "hf4",
+        "hf5",
+        "hf6"
+      ],
+      "correct": true,
+      "runs": [
+        {
+          "seed": 2026090701,
+          "move": "hf3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 10.738,
+          "simulations": 139008,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090702,
+          "move": "hf3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 10.748,
+          "simulations": 140928,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090703,
+          "move": "hf3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 10.688,
+          "simulations": 141568,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090704,
+          "move": "hf3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 10.712,
+          "simulations": 142720,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        },
+        {
+          "seed": 2026090705,
+          "move": "hf3",
+          "ok": true,
+          "legal": true,
+          "elapsed": 10.809,
+          "simulations": 143104,
+          "depth": 3,
+          "override": true,
+          "fallback": false,
+          "mcts_budget": 3.92,
+          "tactical_budget": 3.0
+        }
+      ]
+    }
+  ]
+}
